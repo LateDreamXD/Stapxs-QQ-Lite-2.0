@@ -51,7 +51,7 @@
             <div :style="get('fs_adaptation') > 0 ? `height: calc(100% - ${75 + Number(get('fs_adaptation'))}px);` : ''">
                 <div v-if="tags.page == 'Home'" id="homeTab" name="主页">
                     <div class="home-body">
-                        <div class="login-pan-card ss-card">
+                        <div v-if="!napcat" class="login-pan-card ss-card">
                             <font-awesome-icon :icon="['fas', 'circle-nodes']" />
                             <p>{{ $t('连接到 OneBot') }}</p>
                             <form @submit.prevent @submit="connect">
@@ -194,6 +194,8 @@
         <!-- 全局搜索栏 -->
         <GlobalSessionSearchBar />
         <NtViewer ref="nt-viewer" />
+        <!-- 提示工具 -->
+        <Tooltips />
         <div id="mobile-css" />
     </div>
 </template>
@@ -223,6 +225,7 @@ import Messages from '@renderer/pages/Messages.vue'
 import { backend } from './runtime/backend'
 import GlobalSessionSearchBar from './components/GlobalSessionSearchBar.vue'
 import NtViewer from './components/ViewerCom.vue'
+import Tooltips from './components/tooltip/Tooltips.vue'
 
 // 注册组件实例
 const ntViewer = useTemplateRef<InstanceType<typeof NtViewer>>('nt-viewer')
@@ -237,6 +240,7 @@ export default defineComponent({
             repoName: import.meta.env.VITE_APP_REPO_NAME,
             appClient: backend,
             dev: import.meta.env.DEV,
+            napcat: import.meta.env.VITE_NAPCAT,
             sse: import.meta.env.VITE_APP_SSE_MODE == 'true',
             defineAsyncComponent: defineAsyncComponent,
             save: Option.runASWEvent,
@@ -303,6 +307,15 @@ export default defineComponent({
             Option.run('opt_dark', Option.get('opt_dark'))
             Option.run('opt_auto_dark', Option.get('opt_auto_dark'))
             Option.run('theme_color', Option.get('theme_color'))
+            // 流体玻璃样式附加设置
+            if (Option.get('glass_effect')) {
+                const app = document.getElementById('app')
+                const body = document.body
+                if(app && body) {
+                    body.style.setProperty('background', 'rgba(var(--color-bg-rgb), 0.5)', 'important')
+                    app.style.borderRadius = '25px'
+                }
+            }
             if (['linux', 'win32'].includes(backend.platform ?? '')) {
                 const app = document.getElementById('base-app')
                 if (app) app.classList.add('withBar')
@@ -335,14 +348,47 @@ export default defineComponent({
             // 加载密码保存和自动连接
             loginInfo.address = runtimeData.sysConfig.address
             if (
-                runtimeData.sysConfig.save_password &&
-                runtimeData.sysConfig.save_password != true
+                runtimeData.sysConfig.save_password !== undefined &&
+                runtimeData.sysConfig.save_password !== true
             ) {
                 loginInfo.token = runtimeData.sysConfig.save_password
                 this.tags.savePassword = true
             }
             if (runtimeData.sysConfig.auto_connect == true) {
                 this.connect()
+            }
+            if(import.meta.env.VITE_NAPCAT) {
+                logger.info('Stapxs QQ Lite 处于 Napcat 模式 ……')
+                const token = localStorage.getItem('token')
+                if(token) {
+                    // api/Debug/create 获取连接配置信息
+                    fetch('/api/Debug/create', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + token
+                        }
+                    }).then(async (response) => {
+                        if(response.ok) {
+                            const data = await response.json()
+                            // 获取当前页面的根 URL
+                            const rootUrl = window.location.origin
+                            loginInfo.address = rootUrl.replace('http', 'ws') + '/api/Debug/ws'
+                            loginInfo.token = data.data.token
+                            this.connect()
+                        } else {
+                            logger.error(null, 'Napcat 快速连接失败，状态码：' + response.status)
+                        }
+                    }).catch((error) => {
+                        logger.error(null, 'Napcat 快速连接请求失败：' + error)
+                    })
+                    this.updateNapcatColor(token)
+                    window.addEventListener('storage', (event) => {
+                        if(event.key === 'theme') {
+                            this.updateNapcatColor(token)
+                        }
+                    })
+                }
             }
             // 服务发现
             backend.call('Onebot', 'sys:findService', false)
@@ -458,6 +504,36 @@ export default defineComponent({
         }
     },
     methods: {
+        updateNapcatColor(token: string) {
+            const logger = new Logger()
+            // api/base/Theme 获取主题配置信息
+            fetch('/api/Base/Theme', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                }
+            }).then(async (response) => {
+                if(response.ok) {
+                    const data = await response.json()
+                    const media = window.matchMedia('(prefers-color-scheme: dark)')
+                    if(media.matches) {
+                        const colorHsl = data.data.dark['--heroui-primary']
+                        document.documentElement.style.setProperty('--color-main', `hsl(${colorHsl} / .3)`)
+                        document.documentElement.style.setProperty('--color-main-0', `hsl(${colorHsl} / .3)`)
+                    } else {
+                        const colorHsl = data.data.light['--heroui-primary']
+                        document.documentElement.style.setProperty('--color-main', `hsl(${colorHsl} / .1)`)
+                        document.documentElement.style.setProperty('--color-main-0', `hsl(${colorHsl} / .1)`)
+                    }
+                } else {
+                    logger.error(null, 'Napcat 主题获取失败，状态码：' + response.status)
+                }
+            }).catch((error) => {
+                logger.error(null, 'Napcat 主题请求失败：' + error)
+            })
+        },
+
         /**
          * electron 窗口操作
          */

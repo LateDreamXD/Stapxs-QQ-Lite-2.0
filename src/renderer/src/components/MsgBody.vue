@@ -24,12 +24,10 @@
         :data-time="data.time"
         @mouseleave="hiddenUserInfo">
         <img v-menu.prevent="event => $emit('showMenu', event, data)"
+            v-user-tooltip="() => getUserById(data.sender.user_id)"
             name="avatar"
             :src="'https://q1.qlogo.cn/g?b=qq&s=0&nk=' + data.sender.user_id"
             :alt="data.sender.card ? data.sender.card : data.sender.nickname"
-            @mouseenter="userInfoHoverHandle($event, getUserById(data.sender.user_id))"
-            @mousemove="userInfoHoverHandle($event, getUserById(data.sender.user_id))"
-            @mouseleave="userInfoHoverEnd($event)"
             @dblclick="sendPoke">
         <div v-if="data.fake_msg == true"
             :class="'sending left' + (isMe ? ' me' : '')">
@@ -104,7 +102,7 @@
                         <img v-else-if="item.type == 'image'"
                             :title="(!item.summary || item.summary == '') ? $t('预览图片') : item.summary"
                             :alt="$t('图片')"
-                            :class=" imgStyle(data.message.length, index, item.asface)"
+                            :class=" imgStyle(data.message.length, index, isFace(item))"
                             :src="backend.proxyUrl(item.url)"
                             @load="imageLoaded"
                             @error="imgLoadFail"
@@ -118,11 +116,9 @@
                         </span>
                         <div v-else-if="item.type == 'at'"
                             :class="getAtClass(item.qq)">
-                            <a :data-id="item.qq"
-                                :data-group="data.group_id"
-                                @mouseenter="userInfoHoverHandle($event, getAtMember(item.qq))"
-                                @mousemove="userInfoHoverHandle($event, getAtMember(item.qq))"
-                                @mouseleave="userInfoHoverEnd($event)">
+                            <a v-user-tooltip="() => getAtMember(item.qq)"
+                                :data-id="item.qq"
+                                :data-group="data.group_id">
                                 {{ getAtName(item) }}
                             </a>
                         </div>
@@ -381,11 +377,11 @@ import {
     isRobot,
     openLink,
     sendStatEvent,
-    useStayEvent,
 	vMenu,
 	vMove,
 	VMoveOptions,
 } from '@renderer/function/utils/appUtil'
+import { vUserTooltip } from '@renderer/function/tooltip'
 import {
     getSizeFromBytes,
     getTrueLang,
@@ -396,7 +392,6 @@ import { backend } from '@renderer/runtime/backend'
 import Emoji from '@renderer/function/model/emoji'
 import EmojiFace from './EmojiFace.vue'
 import LazyLottie from './LazyLottie.vue'
-import { UserInfoPan } from './UserInfoPan.vue'
 import { Img } from '@renderer/function/model/img'
 
 type Msg = any
@@ -406,12 +401,10 @@ const {
     data,
     selected,
     type,
-    userInfoPan,
 } = defineProps<{
     data: any
     selected?: boolean
     type?: string
-    userInfoPan?: UserInfoPan
     imageListHeader?: Img | undefined
 }>()
 
@@ -455,26 +448,6 @@ const moveOptions: VMoveOptions<HTMLDivElement> = {
     }
 }
 
-//#endregion
-
-//#region == 长按/覆盖监视器 =========================================================
-const {
-    handle: userInfoHoverHandle,
-    handleEnd: userInfoHoverEnd,
-} = useStayEvent(
-    (event: MouseEvent) => {
-        return {
-            x: event.clientX,
-            y: event.clientY,
-        }
-    },
-    {onFit: (eventData, ctx: number | IUser) => {
-        userInfoPan?.open(ctx, eventData.x, eventData.y)
-    },
-    onLeave: () => {
-        userInfoPan?.close()
-    }}, 495
-)
 //#endregion
 
 //#region == 工具函数 ================================================================
@@ -671,8 +644,20 @@ function getUserById(id: number): IUser | undefined {
                 const vh = document.documentElement.clientHeight || document.body.clientHeight
                 const imgHeight = img.naturalHeight || img.height
                 let imgWidth = img.naturalWidth || img.width
-                if (imgHeight > vh * 0.35)
-                    imgWidth = (imgWidth * (vh * 0.35)) / imgHeight
+
+                // 计算长宽比，检测是否为长图
+                const aspectRatio = imgHeight / imgWidth
+
+                // 常见的手机里最大的可能一般是 20:9
+                // 避免截图被判为长图，这里设置为它
+                if (aspectRatio > 2.5) {
+                    img.classList.add('long-img')
+                } else {
+                    // 普通图片的处理逻辑保持不变
+                    if (imgHeight > vh * 0.35)
+                        imgWidth = (imgWidth * (vh * 0.35)) / imgHeight
+                }
+
                 img.style.setProperty('--width', `${imgWidth}px`)
                 this.$emit('imageLoaded', img.offsetHeight)
             },
@@ -1223,8 +1208,11 @@ function getUserById(id: number): IUser | undefined {
             isFace(item: any) {
                 if (item.asface) return true
                 // 这是神马鬼玩意？一个驼峰，一个下划线，真是一个协议段一个协议啊
+                // QQ 一个动画表情怎么这么多种类型啊，服了
                 else if (item.subType == 7) return true
+                else if (item.subType == 1) return true
                 else if (item.sub_type == 7) return true
+                else if (item.sub_type == 1) return true
                 return false
             },
             //#endregion

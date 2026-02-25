@@ -52,6 +52,7 @@ export const optDefault: { [key: string]: any } = {
     chatview_name: '',
     opt_fast_animation: false,
     chat_more_blur: false,
+    glass_effect: false,
     initial_scale: 0.85,
     fs_adaptation: 0,
     opt_always_top: false,
@@ -72,6 +73,7 @@ export const optDefault: { [key: string]: any } = {
     close_browser: false,
     close_ga: false,
     open_ga_bot: true,
+    record_recent_emoji: '100times' as 'none' | 'order' | '100times' | '500times',
     // Dev
     msg_type: 2,
     log_level: 'err',

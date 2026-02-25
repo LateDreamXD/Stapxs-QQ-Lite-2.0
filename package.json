@@ -1,7 +1,6 @@
 {
   "name": "stapxs-qq-lite",
-  "version": "3.3.3",
-  "private": false,
+  "version": "3.3.5",
   "author": "Stapx Steve [林槐]",
   "description": "一个兼容 OneBot 协议的非官方 QQ 全平台客户端实现。",
   "homepage": "http://github.com/Stapxs/Stapxs-QQ-Lite-2.0",
@@ -22,12 +21,16 @@
     "open:ios": "vite build && capacitor sync ios && capacitor open ios",
     "open:android": "vite build && capacitor sync android && capacitor open android",
     "build": "vite build",
+    "build:napcat": "cross-env VITE_NAPCAT=1 vite build && node ./scripts/napcat-postbuild.cjs",
     "build:electron": "cross-env DESKTOP=1 electron-vite build && electron-builder",
     "build:tauri": "cross-env DESKTOP=1 tauri build -c src/tauri/tauri.conf.json",
     "build:ios": "vite build && capacitor sync ios && sh ./scripts/build-export-ipa.sh",
     "build:android": "vite build && capacitor sync android && capacitor build android",
     "preview": "vite preview"
   },
+  "workspaces": [
+    "ssqq.capacitor-onebot-connector"
+  ],
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.0",
     "@electron-toolkit/utils": "^3.0.0",
@@ -42,7 +45,11 @@
     "pinia": "^3.0.3",
     "rollup-plugin-node-polyfills": "^0.2.1",
     "semver": "^7.7.1",
+    "vue-virtual-scroller": "^2.0.0-beta.8",
     "ws": "^8.18.0"
+  },
+  "optionalDependencies": {
+    "electron-liquid-glass": "^1.1.1"
   },
   "devDependencies": {
     "@capacitor/android": "^6.2.0",
@@ -75,7 +82,7 @@
     "@vue/eslint-config-typescript": "^13.0.0",
     "animejs": "^3.2.2",
     "browser-image-compression": "^2.0.2",
-    "capacitor-onebot-connctor": "./ssqq.capacitor-onebot-connector",
+    "capacitor-onebot-connctor": "workspace:*",
     "cross-env": "^10.1.0",
     "detect-browser": "^5.3.0",
     "echarts": "^6.0.0",
@@ -105,5 +112,6 @@
     "vue3-danmaku": "^1.6.1",
     "vue3-lottie": "^3.3.1",
     "xss": "^1.0.15"
-  }
+  },
+  "packageManager": "yarn@4.12.0"
 }

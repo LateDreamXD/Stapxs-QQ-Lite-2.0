@@ -64,82 +64,80 @@
             <span>{{ $t('加载中') }}</span>
         </div>
         <!-- 消息显示区 -->
-        <div v-if="!details[3].open"
-            id="msgPan" class="chat"
+        <div id="msgPan" class="chat"
             style="scroll-behavior: smooth"
-            @scroll="chatScroll">
-            <div v-if="!runtimeData.tags.canLoadHistory" class="note note-nomsg">
-                <hr>
-                <a>{{ $t('没有更多消息了') }}</a>
-            </div>
-            <div v-if="runtimeData.tags.loadHistoryFail" class="note note-nomsg">
-                <hr>
-                <a>{{ $t('获取历史记录失败') }}</a>
-            </div>
-            <!-- 时间戳，在下滑加载的时候会显示，方便在大段的相连消息上让用户知道消息时间 -->
-            <NoticeBody v-if="tags.nowGetHistroy && list.length > 0"
-                :data="{ sub_type: 'time', time: list[0].time }" />
-            <TransitionGroup :name="runtimeData.sysConfig.opt_fast_animation ? '' : 'msglist'" tag="div">
-                <template v-for="(msgIndex, index) in list">
-                    <!-- 时间戳 -->
-                    <NoticeBody
-                        v-if="isShowTime(list[index - 1] ? list[index - 1].time : undefined, msgIndex.time)"
-                        :key="'notice-time-' + (msgIndex.time / ( 4 * 60 )).toFixed(0)"
-                        :data="{ sub_type: 'time', time: msgIndex.time }" />
-                    <!-- [已删除]消息 -->
-                    <NoticeBody
-                        v-if="isDeleteMsg(msgIndex)"
-                        :key="'delete-' + msgIndex.message_id"
-                        :data="{ sub_type: 'delete' }" />
-                    <!-- 消息体 -->
-                    <MsgBody v-else-if="(msgIndex.post_type === 'message' ||
-                                 msgIndex.post_type === 'message_sent') &&
-                                 msgIndex.message.length > 0"
-                        :key="msgIndex.fake_message_id ?? msgIndex.message_id"
-                        :selected="multipleSelectList.includes(msgIndex.message_id) || tags.menuDisplay.menuSelectedMsgId == msgIndex.message_id"
-                        :data="msgIndex"
-                        :user-info-pan="userInfoPanFunc"
-                        :image-list-header="chatImg"
-                        @click="msgClick($event, msgIndex)"
-                        @show-menu="showMsgMeun"
-                        @scroll-to-msg="scrollToMsg"
-                        @image-loaded="imgLoadedScroll"
-                        @left-move="replyMsg"
-                        @send-poke="sendPoke" />
-                    <!-- 其他通知消息 -->
-                    <NoticeBody v-else-if="msgIndex.post_type === 'notice'"
-                        :id="uuid()"
-                        :key="'notice-' + index"
-                        :data="msgIndex" />
-                </template>
-            </TransitionGroup>
-        </div>
-        <div v-else id="msgPan"
-            class="chat" style="scroll-behavior: smooth">
-            <!-- 搜索消息结果显示 -->
-            <TransitionGroup
-                :name="runtimeData.sysConfig.opt_fast_animation ? '' : 'msglist'"
-                tag="div">
-                <template v-for="(msgIndex, index) in tags.search.list">
-                    <!-- 时间戳 -->
-                    <NoticeBody
-                        v-if="isShowTime(list[index - 1] ? list[index - 1].time : undefined, msgIndex.time)"
-                        :key="'notice-time-' + index"
-                        :data="{ sub_type: 'time', time: msgIndex.time }" />
-                    <!-- 消息体 -->
-                    <MsgBody v-if=" (msgIndex.post_type === 'message' ||
-                                 msgIndex.post_type === 'message_sent') &&
-                                 msgIndex.message.length > 0"
-                        :key="msgIndex.fake_message_id ?? msgIndex.message_id"
-                        :selected="multipleSelectList.includes(msgIndex.message_id) || tags.menuDisplay.menuSelectedMsgId == msgIndex.message_id"
-                        :data="msgIndex"
-                        :user-info-pan="userInfoPanFunc"
-                        @scroll-to-msg="scrollToMsg"
-                        @show-menu="showMsgMeun"
-                        @image-loaded="imgLoadedScroll"
-                        @left-move="replyMsg" />
-                </template>
-            </TransitionGroup>
+            @scroll="chatScroll($event, details[3].open)">
+            <template v-if="!details[3].open">
+                <div v-if="!runtimeData.tags.canLoadHistory" class="note note-nomsg">
+                    <hr>
+                    <a>{{ $t('没有更多消息了') }}</a>
+                </div>
+                <div v-if="runtimeData.tags.loadHistoryFail" class="note note-nomsg">
+                    <hr>
+                    <a>{{ $t('获取历史记录失败') }}</a>
+                </div>
+                <!-- 时间戳，在下滑加载的时候会显示，方便在大段的相连消息上让用户知道消息时间 -->
+                <NoticeBody v-if="tags.nowGetHistroy && list.length > 0"
+                    :data="{ sub_type: 'time', time: list[0].time }" />
+                <TransitionGroup :name="runtimeData.sysConfig.opt_fast_animation ? '' : 'msglist'" tag="div">
+                    <template v-for="(msgIndex, index) in list">
+                        <!-- 时间戳 -->
+                        <NoticeBody
+                            v-if="isShowTime(list[Number(index) - 1] ? list[Number(index) - 1].time : undefined, msgIndex.time)"
+                            :key="'notice-time-' + (msgIndex.time / ( 4 * 60 )).toFixed(0)"
+                            :data="{ sub_type: 'time', time: msgIndex.time }" />
+                        <!-- [已删除]消息 -->
+                        <NoticeBody
+                            v-if="isDeleteMsg(msgIndex)"
+                            :key="'delete-' + msgIndex.message_id"
+                            :data="{ sub_type: 'delete' }" />
+                        <!-- 消息体 -->
+                        <MsgBody v-else-if="(msgIndex.post_type === 'message' ||
+                                     msgIndex.post_type === 'message_sent') &&
+                                     msgIndex.message.length > 0"
+                            :key="msgIndex.fake_message_id ?? msgIndex.message_id"
+                            :selected="multipleSelectList.includes(msgIndex.message_id) || tags.menuDisplay.menuSelectedMsgId == msgIndex.message_id"
+                            :data="msgIndex"
+                            :image-list-header="chatImg"
+                            @click="msgClick($event, msgIndex)"
+                            @show-menu="showMsgMeun"
+                            @scroll-to-msg="scrollToMsg"
+                            @image-loaded="imgLoadedScroll"
+                            @left-move="replyMsg"
+                            @send-poke="sendPoke" />
+                        <!-- 其他通知消息 -->
+                        <NoticeBody v-else-if="msgIndex.post_type === 'notice'"
+                            :id="uuid()"
+                            :key="'notice-' + index"
+                            :data="msgIndex" />
+                    </template>
+                </TransitionGroup>
+            </template>
+            <template v-else>
+                <!-- 搜索消息结果显示 -->
+                <TransitionGroup
+                    :name="runtimeData.sysConfig.opt_fast_animation ? '' : 'msglist'"
+                    tag="div">
+                    <template v-for="(msgIndex, index) in tags.search.list">
+                        <!-- 时间戳 -->
+                        <NoticeBody
+                            v-if="isShowTime(list[Number(index) - 1] ? list[Number(index) - 1].time : undefined, msgIndex.time)"
+                            :key="'notice-time-' + index"
+                            :data="{ sub_type: 'time', time: msgIndex.time }" />
+                        <!-- 消息体 -->
+                        <MsgBody v-if=" (msgIndex.post_type === 'message' ||
+                                     msgIndex.post_type === 'message_sent') &&
+                                     msgIndex.message.length > 0"
+                            :key="msgIndex.fake_message_id ?? msgIndex.message_id"
+                            :selected="multipleSelectList.includes(msgIndex.message_id) || tags.menuDisplay.menuSelectedMsgId == msgIndex.message_id"
+                            :data="msgIndex"
+                            @scroll-to-msg="scrollToMsg"
+                            @show-menu="showMsgMeun"
+                            @image-loaded="imgLoadedScroll"
+                            @left-move="replyMsg" />
+                    </template>
+                </TransitionGroup>
+            </template>
         </div>
         <!-- 滚动到底部悬浮标志 -->
         <div v-show="tags.showBottomButton"
@@ -211,7 +209,8 @@
                                             <EmojiFace v-if="context.type === 'face'"
                                                 :emoji="Emoji.get(Number(context.data.id))" />
                                             <img v-if="context.type === 'image'"
-                                                :src="context.data.url">
+                                                :src="context.data.url"
+                                                @click="viewerEssImg(context.data.url)">
                                         </template>
                                     </div>
                                 </div>
@@ -239,6 +238,10 @@
                     <div>
                         <font-awesome-icon :icon="['fas', 'copy']" @click="copyMsgs" />
                         <span>{{ $t('复制') }}</span>
+                    </div>
+                    <div>
+                        <font-awesome-icon :icon="['fas', 'xmark']" @click="recallMsgs" />
+                        <span>{{ $t('撤回') }}</span>
                     </div>
                     <div>
                         <span @click="multipleSelectList = []">{{ multipleSelectList.length }}</span>
@@ -379,7 +382,7 @@
                             @keyup="mainKeyUp"
                             @click="selectSQIn"
                             @input="handleInput">
-                        <textarea v-else id="main-input"
+                        <textarea v-else id="main-input-ex"
                             v-model="msg"
                             type="text"
                             :disabled="runtimeData.tags.openSideBar"
@@ -402,8 +405,6 @@
         </div>
         <!-- 合并转发消息预览器 -->
         <MergePan ref="mergePan" />
-        <!-- At 信息悬浮窗 -->
-        <UserInfoPanComponent :data="userInfoPanData" />
         <!-- 消息右击菜单 -->
         <Teleport to="body">
             <div :class="'msg-menu' + (['linux', 'win32'].includes(backend.platform ?? '') ? ' withBar' : '')">
@@ -455,6 +456,10 @@
                     <div v-show="tags.menuDisplay.revoke" @click="revokeMsg">
                         <div><font-awesome-icon :icon="['fas', 'xmark']" /></div>
                         <a>{{ $t('撤回') }}</a>
+                    </div>
+                    <div v-show="tags.menuDisplay.reedit" @click="reeditMsg">
+                        <div><font-awesome-icon :icon="['fas', 'pencil']" /></div>
+                        <a>{{ $t('重新编辑') }}</a>
                     </div>
                     <div v-show="tags.menuDisplay.at"
                         @click="selectedMsg ? addSpecialMsg({ msgObj: { type: 'at', qq: Number(selectedMsg.sender.user_id) }, addText: true, }): '';
@@ -548,7 +553,6 @@ import {
     defineComponent,
     markRaw,
     reactive,
-    shallowReactive
 } from 'vue'
 import { v4 as uuid } from 'uuid'
 import {
@@ -587,35 +591,10 @@ import {
     UserGroupElem,
     MenuEventData,
 } from '@renderer/function/elements/information'
-import UserInfoPanComponent, { UserInfoPan } from '@renderer/components/UserInfoPan.vue'
 import { backend } from '@renderer/runtime/backend'
 import Emoji from '@renderer/function/model/emoji'
 import EmojiFace from '@renderer/components/EmojiFace.vue'
 import { Img } from '@renderer/function/model/img'
-
-type IUser = any
-
-const userInfoPanData = shallowReactive<{
-    user: undefined | IUser | number,
-    x: number,
-    y: number,
-}>({
-    user: undefined,
-    x: 0,
-    y: 0,
-})
-const userInfoPanFunc: UserInfoPan = {
-    open: (user: IUser | number, x: number, y: number) => {
-        if(user.level != undefined) {
-            userInfoPanData.user = user
-            userInfoPanData.x = x
-            userInfoPanData.y = y
-        }
-    },
-    close: () => {
-        userInfoPanData.user = undefined
-    },
-}
 </script>
 
 <script lang="ts">
@@ -713,6 +692,7 @@ const userInfoPanFunc: UserInfoPan = {
                         copyImg: false,
                         downloadImg: false as string | false,
                         revoke: false,
+                        reedit: false,
                         at: true,
                         poke: false,
                         remove: false,
@@ -810,7 +790,8 @@ const userInfoPanFunc: UserInfoPan = {
         },
         methods: {
             resizeMainInput(target?: HTMLTextAreaElement | HTMLInputElement | null) {
-                const input = target ?? (document.getElementById('main-input') as HTMLTextAreaElement | HTMLInputElement | null)
+                let input = target ?? (document.getElementById('main-input') as HTMLTextAreaElement | HTMLInputElement | null)
+                input = input ?? (document.getElementById('main-input-ex') as HTMLTextAreaElement | HTMLInputElement | null)
                 if (!input) return
                 if (!this.Option.get('use_breakline')) {
                     input.style.height = ''
@@ -852,7 +833,9 @@ const userInfoPanFunc: UserInfoPan = {
              * 消息区滚动
              * @param event 滚动事件
              */
-            chatScroll(event: Event) {
+            chatScroll(event: Event, pass: boolean) {
+                if(pass) return
+
                 const body = event.target as HTMLDivElement
                 const bar = document.getElementById('send-more')
                 // 顶部
@@ -1222,9 +1205,8 @@ const userInfoPanFunc: UserInfoPan = {
              * 选中光标在其内部的那个 SQLCode
              */
             selectSQIn() {
-                const input = document.getElementById(
-                    'main-input',
-                ) as HTMLInputElement
+                const input = (document.getElementById( 'main-input') as HTMLTextAreaElement | HTMLInputElement | null) ??
+                    (document.getElementById( 'main-input-ex') as HTMLTextAreaElement | HTMLInputElement | null)
                 // 如果文本框里本来就选中着什么东西就不触发了
                 if (
                     input !== null &&
@@ -1338,6 +1320,8 @@ const userInfoPanFunc: UserInfoPan = {
                             // 自己的消息、管理员和群主会显示撤回
                             this.tags.menuDisplay.revoke = true
                         }
+                        // 重新编辑判定
+                        this.tags.menuDisplay.reedit = this.tags.menuDisplay.revoke && data.sender.user_id === runtimeData.loginInfo.uin
                         if (data.revoke === true) {
                             // 已被撤回的自己的消息只显示复制
                             this.tags.menuDisplay.relpy = false
@@ -1454,6 +1438,7 @@ const userInfoPanFunc: UserInfoPan = {
                     downloadImg: false,
                     copyImg: false,
                     revoke: false,
+                    reedit: false,
                     at: false,
                     poke: false,
                     remove: false,
@@ -1823,14 +1808,39 @@ const userInfoPanFunc: UserInfoPan = {
             /**
              * 撤回消息
              */
-            revokeMsg() {
+            async revokeMsg() {
                 const msg = this.selectedMsg
-                if (msg !== null) {
-                    const msgId = msg.message_id
-                    Connector.send('delete_msg', { message_id: msgId }, 'deleteMsg')
-                    // 关闭消息菜单
-                    this.closeMsgMenu()
+
+                // 关闭消息菜单
+                this.closeMsgMenu()
+
+                if (!msg) {
+                    new PopInfo().add(PopType.ERR, this.$t('获取选中消息失败'))
+                    return
                 }
+
+                const msgId = msg.message_id
+                await Connector.callApi('delete_msg', { message_id: msgId })
+            },
+
+            /**
+             * 重新编辑消息
+             */
+            async reeditMsg() {
+                const msg = this.selectedMsg
+
+                // 关闭消息菜单
+                this.closeMsgMenu()
+
+                if (!msg) {
+                    new PopInfo().add(PopType.ERR, this.$t('获取选中消息失败'))
+                    return
+                }
+
+                const msgId = msg.message_id
+                await Connector.callApi('delete_msg', { message_id: msgId })
+
+                this.reedit(msg)
             },
 
             /**
@@ -1986,9 +1996,8 @@ const userInfoPanFunc: UserInfoPan = {
              * @param data obj
              */
             addSpecialMsg(data: SQCodeElem) {
-                const input = document.getElementById(
-                    'main-input',
-                ) as HTMLInputElement
+                const input = (document.getElementById( 'main-input') as HTMLTextAreaElement | HTMLInputElement) ??
+                    (document.getElementById( 'main-input-ex') as HTMLTextAreaElement | HTMLInputElement)
                 if (data !== undefined) {
                     const index = this.sendCache.length
                     this.sendCache.push(data.msgObj)
@@ -2484,6 +2493,22 @@ const userInfoPanFunc: UserInfoPan = {
             },
 
             /**
+             * 批量撤回消息
+             */
+            async recallMsgs() {
+                const msgList = this.list.filter((item: any) => this.multipleSelectList.includes(item.message_id))
+
+                const tasks: Promise<true | undefined>[] = []
+                for (const msg of msgList) {
+                    const msgId = msg.message_id
+                    tasks.push(Connector.callApi('delete_msg', { message_id: msgId }))
+                }
+                // 关闭多选菜单
+                this.multipleSelectList = []
+                await Promise.all(tasks)
+            },
+
+            /**
              * 获取显示群精华消息
              */
             showJin() {
@@ -2583,6 +2608,31 @@ const userInfoPanFunc: UserInfoPan = {
             },
 
             /**
+             * 重新编辑消息
+             */
+            reedit(msg: any) {
+                this.msg = ''
+                this.sendCache = []
+                this.imgCache.clear()
+                this.cancelReply()
+                for (const seg of msg.message) {
+                    if (seg.type === 'text') {
+                        this.msg += seg.text
+                    } else if (seg.type === 'reply') {
+                        const msg = this.list.find((item: any) => item.message_id == seg.id)
+                        if (!msg) continue
+                        this.replyMsg(msg)
+                    } else {
+                        this.addSpecialMsg({
+                            addText: false,
+                            msgObj: seg,
+                        })
+                        this.msg += '[SQ:' + (this.sendCache.length - 1) + ']'
+                    }
+                }
+            },
+
+            /**
              * 精华消息滚动事件
              */
             jinScroll(event: Event) {
@@ -2607,6 +2657,14 @@ const userInfoPanFunc: UserInfoPan = {
                         )
                     }
                 }
+            },
+
+            /**
+             * 预览精华消息图片
+             */
+            viewerEssImg(url: string) {
+                if (!this.viewer) return
+                (this.viewer as any).open(new Img(url))
             },
 
             /**
