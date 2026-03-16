@@ -50,6 +50,37 @@ jobs:
                   toolchain: stable
                   profile: minimal
                   override: true
+
+            - name: 配置 OpenSSL (Windows)
+              if: matrix.os == 'windows-2022'
+              shell: pwsh
+              run: |
+                $candidates = @("C:\Program Files\OpenSSL-Win64", "C:\Program Files\OpenSSL")
+                $opensslDir = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+                if (-not $opensslDir) {
+                  choco install openssl --no-progress -y
+                  $opensslDir = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+                }
+
+                if (-not $opensslDir) {
+                  throw "OpenSSL is not installed or cannot be found"
+                }
+
+                "OPENSSL_DIR=$opensslDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+                "$opensslDir\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+                $libCandidates = @("$opensslDir\lib\VC\x64\MD", "$opensslDir\lib")
+                $opensslLibDir = $libCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+                if ($opensslLibDir) {
+                  "OPENSSL_LIB_DIR=$opensslLibDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+                }
+
+                $opensslIncludeDir = "$opensslDir\include"
+                if (Test-Path $opensslIncludeDir) {
+                  "OPENSSL_INCLUDE_DIR=$opensslIncludeDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+                }
+
             - name: 检查 Tauri 环境
               run: yarn tauri info
 
