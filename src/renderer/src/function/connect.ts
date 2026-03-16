@@ -13,7 +13,7 @@ import { reactive } from 'vue'
 import { LogType, Logger, PopType, PopInfo } from './base'
 import { dispatch, runtimeData } from './msg'
 
-import { BotActionElem, LoginCacheElem } from './elements/system'
+import { BotActionElem, LoginCacheElem, ConnectionHistoryItem } from './elements/system'
 import { updateMenu } from '@renderer/function/utils/appUtil'
 
 import { v4 as uuid } from 'uuid'
@@ -57,6 +57,12 @@ export class Connector {
         }, 10000)
 
         logger.add(LogType.WS, '当前处于 ALL 日志模式。连接器将输出全部收发消息 ……')
+
+        // 确保 address 包含路径部分，避免部分服务器因 HTTP 请求路径为空而返回 400
+        const withoutProtocol = address.replace(/^(wss?|https?):(\/\/)/, '')
+        if (!withoutProtocol.includes('/')) {
+            address = address + '/'
+        }
 
         // Electron 默认使用后端连接模式
         if (!backend.isWeb()) {
@@ -147,7 +153,7 @@ export class Connector {
 
     static onopen(address: string, token: string | undefined) {
         logger.add(LogType.WS, '连接成功')
-        // 保存登录信息
+        // 保存登录信息（保持兼容性）
         Option.save('address', address)
         // 保存密钥
         if (
@@ -415,4 +421,95 @@ export const login: LoginCacheElem = reactive({
     address: '',
     token: '',
     creating: false,
+    connectionHistory: [],
 })
+
+/**
+ * 加载连接历史
+ */
+export function loadConnectionHistory(): ConnectionHistoryItem[] {
+    const historyStr = Option.get('connection_history')
+    if (historyStr && typeof historyStr === 'string') {
+        try {
+            const history = JSON.parse(historyStr)
+            if (Array.isArray(history)) {
+                return history
+            }
+        } catch (e) {
+            logger.error(e as Error, '加载连接历史失败')
+        }
+    }
+    // 如果是数组直接返回（Option.get 已经解析过）
+    if (Array.isArray(historyStr)) {
+        return historyStr
+    }
+    // 返回空数组作为默认值
+    return []
+}
+
+/**
+ * 保存连接历史
+ */
+function saveConnectionHistory(history: ConnectionHistoryItem[]) {
+    Option.save('connection_history', JSON.stringify(history))
+}
+
+/**
+ * 保存当前连接到历史
+ */
+export function saveConnectionToHistory(address: string, token: string, uin?: string, nickname?: string) {
+    // 确保 connectionHistory 已初始化
+    if (!login.connectionHistory) {
+        login.connectionHistory = []
+    }
+    const history = login.connectionHistory
+
+    // 查找是否已存在（只根据 address 匹配）
+    const existingIndex = history.findIndex(item =>
+        item.address === address
+    )
+
+    const newItem: ConnectionHistoryItem = {
+        address,
+        token,
+        uin,
+        nickname,
+        lastConnected: Date.now()
+    }
+
+    if (existingIndex !== -1) {
+        // 更新已存在的记录（信息按最新的为准）
+        history[existingIndex] = newItem
+    } else {
+        // 添加新记录
+        history.unshift(newItem)
+        // 保持最多 10 条历史记录
+        if (history.length > 10) {
+            history.pop()
+        }
+    }
+
+    saveConnectionHistory(history)
+}
+
+/**
+ * 从历史中加载连接信息
+ */
+export function loadConnectionFromHistory(item: ConnectionHistoryItem) {
+    login.address = item.address
+    login.token = item.token
+}
+
+/**
+ * 删除历史记录
+ */
+export function deleteConnectionHistory(index: number) {
+    if (!login.connectionHistory) {
+        return
+    }
+    const history = login.connectionHistory
+    if (index >= 0 && index < history.length) {
+        history.splice(index, 1)
+        saveConnectionHistory(history)
+    }
+}

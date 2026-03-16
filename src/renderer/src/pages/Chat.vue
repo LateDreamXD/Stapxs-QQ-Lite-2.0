@@ -279,7 +279,7 @@
                 <!-- 搜索指示器 -->
                 <div :class="details[3].open ? 'search-tag show' : 'search-tag'">
                     <font-awesome-icon :icon="['fas', 'search']" />
-                    <span>{{ $t('搜索已加载的消息') }}</span>
+                    <span>{{ runtimeData.sysConfig.enable_local_history ? $t('搜索已保存的消息') : $t('搜索已加载的消息') }}</span>
                     <div @click="closeSearch">
                         <font-awesome-icon :icon="['fas', 'xmark']" />
                     </div>
@@ -552,6 +552,7 @@ import imageCompression from 'browser-image-compression'
 import {
     defineComponent,
     markRaw,
+    nextTick,
     reactive,
 } from 'vue'
 import { v4 as uuid } from 'uuid'
@@ -592,6 +593,7 @@ import {
     MenuEventData,
 } from '@renderer/function/elements/information'
 import { backend } from '@renderer/runtime/backend'
+import { dbGetBefore, dbSearchMessages } from '@renderer/function/utils/localHistoryUtil'
 import Emoji from '@renderer/function/model/emoji'
 import EmojiFace from '@renderer/components/EmojiFace.vue'
 import { Img } from '@renderer/function/model/img'
@@ -731,6 +733,8 @@ import { Img } from '@renderer/function/model/img'
                 atSelectedIndex: 0,
                 atScrollTimer: null as NodeJS.Timeout | null,
                 atScrollInterval: null as NodeJS.Timeout | null,
+                searchDebounceTimer: null as NodeJS.Timeout | null,
+                searchRequestId: 0,
                 isShowTime,
                 isDeleteMsg,
                 isDev: import.meta.env.DEV,
@@ -798,16 +802,16 @@ import { Img } from '@renderer/function/model/img'
                     return
                 }
                 const computed = getComputedStyle(input)
-                const lineHeight = parseFloat(computed.lineHeight)
-                const fontSize = parseFloat(computed.fontSize)
+                const lineHeight = Number.parseFloat(computed.lineHeight)
+                const fontSize = Number.parseFloat(computed.fontSize)
                 const baseLineHeight = Number.isFinite(lineHeight) ? lineHeight : fontSize
-                const paddingTop = parseFloat(computed.paddingTop) || 0
-                const paddingBottom = parseFloat(computed.paddingBottom) || 0
-                const borderTop = parseFloat(computed.borderTopWidth) || 0
-                const borderBottom = parseFloat(computed.borderBottomWidth) || 0
+                const paddingTop = Number.parseFloat(computed.paddingTop) || 0
+                const paddingBottom = Number.parseFloat(computed.paddingBottom) || 0
+                const borderTop = Number.parseFloat(computed.borderTopWidth) || 0
+                const borderBottom = Number.parseFloat(computed.borderBottomWidth) || 0
                 let minHeight = (Number.isFinite(baseLineHeight) ? baseLineHeight : 0) + paddingTop + paddingBottom + borderTop + borderBottom
                 if (minHeight <= 0) {
-                    const fallback = input.offsetHeight || parseFloat(computed.height) || fontSize
+                    const fallback = input.offsetHeight || Number.parseFloat(computed.height) || fontSize
                     if (fallback && Number.isFinite(fallback)) {
                         minHeight = fallback
                     }
@@ -815,9 +819,9 @@ import { Img } from '@renderer/function/model/img'
                 if (!input.dataset.baseHeight) {
                     input.dataset.baseHeight = String(minHeight)
                 }
-                input.style.height = 'auto'
-                const baseHeight = parseFloat(input.dataset.baseHeight) || minHeight
-                const targetHeight = input.scrollHeight > baseHeight * 2 ? Math.max(input.scrollHeight, baseHeight): baseHeight
+                input.style.height = '0'
+                const baseHeight = Number.parseFloat(input.dataset.baseHeight) || minHeight
+                const targetHeight = Math.max(input.scrollHeight, baseHeight)
                 input.style.height = targetHeight + 'px'
             },
             jumpSearchMsg() {
@@ -875,7 +879,7 @@ import { Img } from '@renderer/function/model/img'
             /**
              * 加载更多历史消息
              */
-            loadMoreHistory() {
+            async loadMoreHistory() {
                 if (
                     !this.tags.nowGetHistroy &&
                     runtimeData.tags.canLoadHistory !== false
@@ -886,6 +890,30 @@ import { Img } from '@renderer/function/model/img'
                     this.tags.nowGetHistroy = true
 					// 移除加载失败标志
 					runtimeData.tags.loadHistoryFail = false
+
+                    // 优先从本地数据库加载
+                    if (runtimeData.sysConfig.enable_local_history) {
+                        const localMsgs = await dbGetBefore(
+                            runtimeData.loginInfo.uin,
+                            runtimeData.chatInfo.show.id,
+                            firstMsgId,
+                            20,
+                        )
+                        if (localMsgs.length > 0) {
+                            runtimeData.messageList = localMsgs.concat(runtimeData.messageList)
+                            // 检测 seq 缺口并发起补全请求
+                            // 将边界消息（原列表第一条）加入检测范围
+                            const boundary = this.list[localMsgs.length] ?? this.list[localMsgs.length - 1]
+                            const seqGapAnchors = this.detectSeqGaps([...localMsgs, boundary])
+                            if (seqGapAnchors.length > 0) {
+                                this.fillSeqGaps(seqGapAnchors)
+                            }
+                            this.tags.nowGetHistroy = false
+                            return
+                        }
+                        // 本地为空，回落到网络请求
+                    }
+
                     // 发起获取历史消息请求
                     const fullPage =
                         runtimeData.jsonMap.message_list?.pagerType == 'full'
@@ -906,6 +934,52 @@ import { Img } from '@renderer/function/model/img'
                             count: fullPage? runtimeData.messageList.length + 20: 20,
                         },
                         'getChatHistory',
+                    )
+                }
+            },
+
+            /**
+             * 检测消息列表中的 seq 缺口。
+             * 若任意消息缺少 seq 则返回空数组（缺口检测功能不可用）。
+             * @returns 每个缺口之后第一条消息的 message_id（作为网络请求锚点）
+             */
+            detectSeqGaps(msgs: any[]): string[] {
+                const gaps: string[] = []
+                for (let i = 0; i < msgs.length - 1; i++) {
+                    const seqA: number | null = msgs[i].message_seq ?? msgs[i].seq ?? null
+                    const seqB: number | null = msgs[i + 1].message_seq ?? msgs[i + 1].seq ?? null
+                    // 任意消息没有 seq，停止检测
+                    if (seqA == null || seqB == null) return []
+                    if (seqB - seqA > 1) {
+                        gaps.push(msgs[i + 1].message_id)
+                    }
+                }
+                return gaps
+            },
+
+            /**
+             * 向网络请求补全缺失的消息段。
+             * @param anchorMsgIds 每个缺口之后第一条消息的 message_id
+             */
+            fillSeqGaps(anchorMsgIds: string[]) {
+                const type = runtimeData.chatInfo.show.type
+                const id = runtimeData.chatInfo.show.id
+                let name: string
+                if (runtimeData.jsonMap.message_list && type != 'group') {
+                    name = runtimeData.jsonMap.message_list.private_name
+                } else {
+                    name = runtimeData.jsonMap.message_list?.name
+                }
+                for (const anchorMsgId of anchorMsgIds) {
+                    Connector.send(
+                        name ?? 'get_chat_history',
+                        {
+                            group_id: type == 'group' ? id : undefined,
+                            user_id: type != 'group' ? id : undefined,
+                            message_id: anchorMsgId,
+                            count: 20,
+                        },
+                        'getChatHistoryGapFill_' + anchorMsgId,
                     )
                 }
             },
@@ -2001,19 +2075,26 @@ import { Img } from '@renderer/function/model/img'
                 if (data !== undefined) {
                     const index = this.sendCache.length
                     this.sendCache.push(data.msgObj)
-                    if (data.addText === true) {
-                        if (data.addTop === true) {
-                            this.msg = '[SQ:' + index + ']' + this.msg
+                    if (!data.addText) return index
+
+                    const sqCode = `[SQ:${index}]`
+
+                    if (data.addTop === true) {
+                        this.msg = sqCode + this.msg
+                    } else {
+                        const selectionStart = input?.selectionStart
+                        const selectionEnd = input?.selectionEnd ?? selectionStart
+                        if(selectionStart != null) {
+                            // 插到光标位置
+                            const first = this.msg.substring(0, selectionStart)
+                            const last = this.msg.substring(selectionEnd!, this.msg.length)
+                            this.msg = first + sqCode + last
+                            nextTick(()=>{
+                                input.selectionStart = selectionStart + sqCode.length
+                                input.selectionEnd = selectionStart + sqCode.length
+                            })
                         } else {
-                            const selectStart = input.selectionStart
-                            if(selectStart != null) {
-                                // 插到光标位置
-                                const first = this.msg.substring(0, selectStart)
-                                const last = this.msg.substring(selectStart, this.msg.length)
-                                this.msg = first + '[SQ:' + index + ']' + last
-                            } else {
-                                this.msg += '[SQ:' + index + ']'
-                            }
+                            this.msg += sqCode
                         }
                     }
                     return index
@@ -2222,9 +2303,10 @@ import { Img } from '@renderer/function/model/img'
              * PS：我实在懒得再做一次回车发送了。所以当点击图片发送框的输入框后，焦点会被移动到主输入框上以方便回车发送
              */
             toMainInput() {
-                const mainInput = document.getElementById('main-input')
-                if (mainInput !== null) {
-                    mainInput.focus()
+                const input = (document.getElementById( 'main-input') as HTMLTextAreaElement | HTMLInputElement) ??
+                    (document.getElementById( 'main-input-ex') as HTMLTextAreaElement | HTMLInputElement)
+                if (input !== null) {
+                    input.focus()
                 }
             },
 
@@ -2530,7 +2612,7 @@ import { Img } from '@renderer/function/model/img'
                 this.tags.showMoreDetail = !this.tags.showMoreDetail
             },
 
-            handleInput(event: Event) {
+            async handleInput(event: Event) {
                 const input = event.target as HTMLInputElement
                 this.resizeMainInput(input)
 
@@ -2556,10 +2638,27 @@ import { Img } from '@renderer/function/model/img'
                 }
 
                 if (this.details[3].open) {
+                    if (this.searchDebounceTimer) {
+                        clearTimeout(this.searchDebounceTimer)
+                        this.searchDebounceTimer = null
+                    }
                     const value = input.value
                     if (value.length == 0) {
+                        this.searchRequestId++
                         this.tags.search.list = reactive(this.list)
-                    } else if (value.length > 0) {
+                    } else if (runtimeData.sysConfig.enable_local_history) {
+                        const requestId = ++this.searchRequestId
+                        this.searchDebounceTimer = setTimeout(async () => {
+                            const results = await dbSearchMessages(
+                                runtimeData.loginInfo.uin,
+                                runtimeData.chatInfo.show.id,
+                                value,
+                            )
+                            if (requestId !== this.searchRequestId || !this.details[3].open) return
+                            this.tags.search.list = results
+                        }, 180)
+                    } else {
+                        this.searchRequestId++
                         this.tags.search.list = this.list.filter(
                             (item: any) => {
                                 const rawMessage = getMsgRawTxt(item)
@@ -2574,6 +2673,11 @@ import { Img } from '@renderer/function/model/img'
                 this.tags.showMoreDetail = !this.tags.showMoreDetail
             },
             closeSearch() {
+                if (this.searchDebounceTimer) {
+                    clearTimeout(this.searchDebounceTimer)
+                    this.searchDebounceTimer = null
+                }
+                this.searchRequestId++
                 this.details[3].open = !this.details[3].open
                 this.msg = ''
                 this.tags.search.list = reactive(this.list)
@@ -2630,6 +2734,7 @@ import { Img } from '@renderer/function/model/img'
                         this.msg += '[SQ:' + (this.sendCache.length - 1) + ']'
                     }
                 }
+                this.toMainInput()
             },
 
             /**

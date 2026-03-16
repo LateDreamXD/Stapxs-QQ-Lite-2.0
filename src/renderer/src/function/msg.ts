@@ -43,7 +43,7 @@ import {
 } from '@renderer/function/utils/appUtil'
 import { reactive, markRaw, defineAsyncComponent, nextTick } from 'vue'
 import { PopInfo, PopType, Logger, LogType } from './base'
-import { Connector, login } from './connect'
+import { Connector, login, saveConnectionToHistory } from './connect'
 import {
     GroupFileElem,
     GroupFileFolderElem,
@@ -57,6 +57,7 @@ import {
 import { NotifyInfo } from './elements/system'
 import { Notify } from './notify'
 import { backend } from '@renderer/runtime/backend'
+import { dbRevokeMessage, saveMessagesWithSideEffects } from './utils/localHistoryUtil'
 import { refreshFavicon } from './favicon'
 import { Img } from './model/img'
 import { getPinyin } from './utils/pinyin'
@@ -434,6 +435,10 @@ const msgFunctions = {
             // 完成登陆初始化
             runtimeData.loginInfo = data
             login.status = true
+
+            // 保存用户信息到连接历史
+            saveConnectionToHistory(login.address, login.token, data.uin, data.nickname)
+
             // 显示账户菜单
             updateMenu({
                 parent: 'account',
@@ -589,7 +594,33 @@ const msgFunctions = {
             runtimeData.tags.loadHistoryFail = true
             return
         }
-        saveMsg(msg, 'top')
+        // 无论是否有本地预填充，都以网络数据替换（保证最新消息不遗漏）
+        saveMsg(msg)
+    },
+    getChatHistoryGapFill: (
+        _: string,
+        msg: { [key: string]: any },
+        metaArgs?: string[],
+    ) => {
+        // echo 格式：getChatHistoryGapFill_<anchorMsgId>
+        // anchorMsgId 是 gap 之后第一条消息的 message_id（插入点）
+        const anchorMsgId = metaArgs?.[1]
+        if (!anchorMsgId || msg.data === null) return
+        const rawList = getMsgData('message_list', msg, msgPath.message_list)
+        getMessageList(rawList)
+            .then((list) => {
+                if (!list || list.length === 0) return
+                const inserted = insertHistorySegmentAtAnchor(
+                    runtimeData.messageList,
+                    anchorMsgId,
+                    list,
+                )
+                if (inserted.length === runtimeData.messageList.length) return
+                runtimeData.messageList = inserted
+                // 同步存入本地 DB，以便下次直接从本地加载
+                saveMessagesWithSideEffects(runtimeData.loginInfo.uin, list)
+            })
+            .catch(() => {})
     },
     getChatHistory: (_: string, msg: { [key: string]: any }) => {
         if (msg.data === null) {
@@ -1368,8 +1399,7 @@ function saveClassInfo(
 }
 
 async function saveMsg(msg: any, append = undefined as undefined | string) {
-    let list = getMsgData('message_list', msg, msgPath.message_list)
-    list = await getMessageList(list)
+    let list = await normalizeMessagesFromPayload(msg)
     if (list != undefined) {
         // 检查消息是否是当前聊天的消息
         const firstMsg = list[0]
@@ -1389,6 +1419,8 @@ async function saveMsg(msg: any, append = undefined as undefined | string) {
         list = list.filter((item: any) => {
             return item.message.length > 0
         })
+        // 保存到本地历史
+        saveMessagesWithSideEffects(runtimeData.loginInfo.uin, list)
         // 如果分页不是增量的，就不使用追加
         if (
             append == 'top' &&
@@ -1447,6 +1479,47 @@ async function saveMsg(msg: any, append = undefined as undefined | string) {
             }
         }
     }
+}
+
+async function normalizeMessagesFromPayload(payload: any): Promise<any[] | undefined> {
+    const rawList = getMsgData('message_list', payload, msgPath.message_list)
+    return getMessageList(rawList)
+}
+
+function normalizeNewIncomingMessage(data: any): any[] {
+    let list = getMsgData(
+        'message_list',
+        buildMsgList([data]),
+        msgPath.message_list,
+    )
+
+    if (list == undefined) return []
+
+    list = parseMsgList(
+        list,
+        msgPath.message_list.type,
+        msgPath.message_value,
+    )
+    return list
+}
+
+function insertHistorySegmentAtAnchor(
+    current: any[],
+    anchorMsgId: string,
+    segment: any[],
+): any[] {
+    const insertIdx = current.findIndex((m) => m.message_id === anchorMsgId)
+    if (insertIdx === -1) return current
+
+    const existingIds = new Set(current.map((m) => m.message_id))
+    const newMsgs = segment.filter((m) => !existingIds.has(m.message_id))
+    if (newMsgs.length === 0) return current
+
+    return [
+        ...current.slice(0, insertIdx),
+        ...newMsgs,
+        ...current.slice(insertIdx),
+    ]
 }
 
 export async function getMessageList(list: any[] | undefined) {
@@ -1531,8 +1604,11 @@ function revokeMsg(_: string, msg: any) {
     const chatId = msg.notice_type.includes('group') ? msg.group_id : msg.user_id
     new Notify().closeAll(chatId)
 
-    // 寻找消息
+    // 在本地 DB 中标记撤回
     const msgId = msg.message_id
+    dbRevokeMessage(runtimeData.loginInfo.uin, String(msgId))
+
+    // 寻找消息
     let msgGet = null as { [key: string]: any } | null
     let msgIndex!: number
     for (const [index, msg] of runtimeData.messageList.entries()) {
@@ -1616,6 +1692,17 @@ function newMsg(_: string, data: any) {
         // 刷新 favicon
         refreshFavicon()
 
+
+
+        // 对消息进行一次格式化处理
+        const list = normalizeNewIncomingMessage(data)
+
+        if (list.length > 0) {
+            // 保存到本地历史
+            saveMessagesWithSideEffects(runtimeData.loginInfo.uin, list)
+            data = list[0]
+        }
+
         // 显示消息 ============================================
         if (id === showId || info.target_id == showId) {
             // 如果有正在输入的提示，清除它
@@ -1648,21 +1735,6 @@ function newMsg(_: string, data: any) {
                 Umami.trackEvent('show_qed', { times: qed_try_times })
             }
             qed_try_times++
-        }
-
-        // 对消息进行一次格式化处理
-        let list = getMsgData(
-            'message_list',
-            buildMsgList([data]),
-            msgPath.message_list,
-        )
-        if (list != undefined) {
-            list = parseMsgList(
-                list,
-                msgPath.message_list.type,
-                msgPath.message_value,
-            )
-            data = list[0]
         }
 
         // 通知判定预处理 ============================================
