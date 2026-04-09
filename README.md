@@ -276,3 +276,10 @@ Stapxs QQ Lite 的 Tauri 版本使用了来自 [DeltaChat](https://github.com/de
 <a href="https://github.com/Logic-Accepted"><img src="https://avatars.githubusercontent.com/u/36406453?s=48&v=4"></a>
 <a href="https://github.com/doodlehuang"><img src="https://avatars.githubusercontent.com/u/25525621?s=48&v=4"></a>
 <a href="https://github.com/Chzxxuanzheng"><img src="https://avatars.githubusercontent.com/u/122149478?s=48&v=4"></a>
+
+## ⭐️ Star History
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=stapxs/Stapxs-QQ-Lite-2.0&type=date&theme=dark&legend=top-left" />
+  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=stapxs/Stapxs-QQ-Lite-2.0&type=date&legend=top-left" />
+  <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=stapxs/Stapxs-QQ-Lite-2.0&type=date&legend=top-left" />
+</picture>
