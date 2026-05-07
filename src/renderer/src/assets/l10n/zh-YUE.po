@@ -798,9 +798,6 @@ msgstr ""
 msgid "如果你不想用它或者 bot 不支持，可以关闭这个功能"
 msgstr ""
 
-msgid "（获取回复消息失败）"
-msgstr ""
-
 msgid "进阶功能"
 msgstr ""
 

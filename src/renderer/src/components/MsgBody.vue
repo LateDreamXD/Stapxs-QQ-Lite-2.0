@@ -13,28 +13,32 @@
     <div :id="'chat-' + data.message_id"
         ref="msgMain"
         v-menu.prevent="event => $emit('showMenu', event, data)"
-        :class="'message' +
-            (type ? ' ' + type : '') +
-            (data.revoke ? ' revoke' : '') +
-            (isMe ? ' me' : '') +
-            (selected ? ' selected' : '') +
-            (settingsStore.sysConfig.opt_ind_message === true ? ' right' : '')"
+        :class="[
+            'message', type ?? '',
+            { 'revoke': data.revoke },
+            { 'me': isMe && type != 'body' },
+            { 'selected': selected },
+            { 'right': settingsStore.sysConfig.opt_ind_message === true && type != 'body' },
+            { 'body-only': type == 'body' }
+        ]"
         :data-raw="getMsgRawTxt(data)"
         :data-sender="data.sender.user_id"
         :data-time="data.time"
         @mouseleave="hiddenUserInfo">
-        <img v-menu.prevent="event => $emit('showMenu', event, data)"
-            v-user-tooltip="() => getUserById(data.sender.user_id)"
-            name="avatar"
-            :src="'https://q1.qlogo.cn/g?b=qq&s=0&nk=' + data.sender.user_id"
-            :alt="data.sender.card ? data.sender.card : data.sender.nickname"
-            @dblclick="sendPoke">
-        <div v-if="data.fake_msg == true"
-            :class="'sending left' + (isMe ? ' me' : '')">
-            <font-awesome-icon :icon="['fas', 'spinner']" />
-        </div>
+        <template v-if="type != 'body'">
+            <img v-menu.prevent="event => $emit('showMenu', event, data)"
+                v-user-tooltip="() => getUserById(data.sender.user_id)"
+                name="avatar"
+                :src="'https://q1.qlogo.cn/g?b=qq&s=0&nk=' + data.sender.user_id"
+                :alt="data.sender.card ? data.sender.card : data.sender.nickname"
+                @dblclick="sendPoke">
+            <div v-if="data.fake_msg == true"
+                :class="'sending left' + (isMe ? ' me' : '')">
+                <font-awesome-icon :icon="['fas', 'spinner']" />
+            </div>
+        </template>
         <div :class="msgBodyClass">
-            <header>
+            <header v-if="type != 'body'">
                 <template v-if="chatStore.chatInfo.show.type == 'group'">
                     <span v-if="senderInfo && isRobot(senderInfo.user_id)" class="robot">{{ $t('机器人') }}</span>
                     <span v-if="senderInfo?.role == 'owner'" class="owner">{{ $t('群主') }}</span>
@@ -222,13 +226,17 @@
                             </div>
                         </template>
                         <div v-else-if="item.type == 'reply'"
+                            v-show="type != 'body'"
                             :class="isMe ? type == 'merge' ? 'msg-replay' : 'msg-replay me' : 'msg-replay'"
                             @click="scrollToMsg(item.id)">
-                            <font-awesome-icon :icon="['fas', 'reply']" />
-                            <a :class="getRepMsg(item.id) ? '' : 'msg-unknown'"
-                                style="cursor: pointer">
-                                {{ getRepMsg(item.id) ?? $t('（查看回复消息）') }}
-                            </a>
+                            <template v-if="getMsg(item.id)">
+                                <div>
+                                    <span>{{ getMsgInfo(item.id) }}</span>
+                                    <font-awesome-icon :icon="['fas', 'turn-up']" />
+                                </div>
+                                <MsgBody :data="getMsg(item.id, true)" :type="'body'" />
+                            </template>
+                            <a v-else class="msg-unknown">{{ $t('（查看回复消息）') }}</a>
                         </div>
                         <div v-else-if="item.type == 'poke'" v-once :class="showPock()">
                             <font-awesome-icon class="poke-hand" style="margin-right: 5px;" :icon="['fas', 'fa-hand-point-up']" />
@@ -353,7 +361,7 @@ import Option from '@renderer/function/option'
 import markdownit from 'markdown-it'
 
 import { MsgBodyFuns as ViewFuns } from '@renderer/function/model/msg-body'
-import { watch, onMounted, nextTick, provide, inject, useTemplateRef, ref } from 'vue'
+import { watch, onMounted, nextTick, provide, inject, useTemplateRef, ref, toRaw } from 'vue'
 import { Connector } from '@renderer/function/connect'
 import { useSettingsStore } from '@renderer/state/settings'
 import { Logger, LogType, PopInfo, PopType } from '@renderer/function/base'
@@ -411,7 +419,7 @@ const {
 } = defineProps<{
     data: any
     selected?: boolean
-    type?: string
+    type?: 'merge' | 'body'
     imageListHeader?: Img | undefined
 }>()
 
@@ -552,6 +560,9 @@ function scrollToMsg(id: string) {
 
 function imgStyle(length: number, at: number, isFace: boolean) {
     let style = 'msg-img'
+    if (type == 'body') {
+        return style
+    }
     if (isFace) {
         style += ' face'
     }
@@ -783,14 +794,60 @@ function hiddenUserInfo() {
     }
 }
 
-function getRepMsg(message_id: string) {
+function getMsgInfo(message_id: string) {
+    const list = chatStore.messageList.filter((item) => {
+        return item.message_id == message_id
+    })
+    if (list.length === 1 && list[0].message.length > 0) {
+        const time = Intl.DateTimeFormat(trueLang, {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: 'numeric',
+            minute: 'numeric',
+            second: 'numeric',
+        }).format(getViewTime(getViewTime(list[0].time)))
+        return (list[0].sender.nickname + ' ' + time)
+    }
+    else return ''
+
+}
+
+function getMsg(message_id: string, filter: boolean = false) {
     const list = chatStore.messageList.filter((item) => {
         return item.message_id == message_id
     })
     if (list.length === 1) {
-        if (list[0].message.length > 0)
-            return ( list[0].sender.nickname + ': ' + getMsgRawTxt(list[0]))
-        else return $t('（获取回复消息失败）')
+        if(filter) {
+            const msg = toRaw(list[0])
+            const mediaTypes = new Set([
+                'image',
+                'mface',
+                'video',
+                'record',
+                'file',
+                'forward',
+                'json',
+                'xml',
+            ])
+            let hasMedia = false
+            const message = (msg.message ?? []).filter((seg: any) => {
+                if (!mediaTypes.has(seg?.type)) {
+                    return true
+                }
+                if (hasMedia) {
+                    return false
+                }
+                hasMedia = true
+                return true
+            })
+            return {
+                ...msg,
+                message,
+            }
+        } else {
+            return list[0]
+        }
     }
     return null
 }

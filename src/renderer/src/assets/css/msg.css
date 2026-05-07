@@ -30,6 +30,10 @@
     overflow-y: scroll;
     max-height: 40vh;
 }
+.message.body-only {
+    padding: 0;
+    margin: 0;
+}
 .message > img {
     width: 35px;
     height: 35px;
@@ -151,6 +155,10 @@
 }
 .message-body.me > div {
     background: var(--color-main);
+}
+.message.body-only > div.message-body > div {
+    background: transparent;
+    padding: 0;
 }
 .message-body.super-face > div {
     background: transparent;
@@ -334,24 +342,27 @@ div:has(> .msg-img.long-img.light)::after {
     border-radius: 7px;
     overflow: hidden;
     cursor: pointer;
-    height: 0.9rem;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
     padding: 10px;
 }
-.msg-replay a {
-    line-height: calc(0.9rem + 10px);
-    margin-left: calc(1rem + 10px);
-    word-break: break-all;
-    font-size: 0.9rem;
-    margin-top: -5px;
-    display: block;
+.msg-replay > div:first-child {
+    display: flex;
 }
-.msg-replay svg {
-    margin-bottom: calc(-1rem - 5px);
-    color: var(--color-font-1);
-    margin-right: 5px;
-    margin-top: 1px;
-    display: block;
-    height: 1rem;
+.msg-replay > div:first-child span {
+    margin-right: 25px;
+    font-size: 0.75rem;
+    opacity: 0.7;
+    flex: 1;
+}
+.msg-replay > div:first-child svg {
+    height: 0.7rem;
+    opacity: 0.7;
+}
+.msg-replay > div:last-child span,
+.msg-replay > div:last-child a {
+    font-size: 0.8rem !important;
 }
 .msg-replay.me svg {
     color: var(--color-font-1-r);
