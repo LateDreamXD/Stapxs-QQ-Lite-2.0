@@ -39,6 +39,7 @@
     color: var(--color-font-r);
 }
 
+
 .chat-pan {
     background: transparent;
     box-shadow: unset !important;
@@ -47,7 +48,8 @@
 .chat-pan > div.bg {
     background: unset;
 }
-.chat-pan > div.info {
+.chat-pan > div.info,
+.sys-not-pan > div:first-child {
     background: rgba(var(--color-card-rgb), 0.3);
     box-shadow: 0 0 3px var(--color-shader);
     backdrop-filter: blur(20px);
@@ -65,6 +67,10 @@
     background: rgba(var(--color-card-rgb), 0.5);
     box-shadow: 0 0 3px var(--color-shader);
     backdrop-filter: blur(20px);
+}
+
+.sys-not-list > div {
+    background: rgba(var(--color-card-rgb), 0.3);
 }
 
 .chat-info {

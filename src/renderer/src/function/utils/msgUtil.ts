@@ -290,7 +290,7 @@ export function getMsgRawTxt(data: any): string {
                     back += '[' + $t('视频') + ']'
                     break
                 case 'file':
-                    back += '[' + $t('文件') + ']'
+                    back += '[' + $t('文件') + ']' + message[i].name
                     break
                 case 'json': {
                     try {

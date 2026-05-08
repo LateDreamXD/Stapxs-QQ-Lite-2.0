@@ -229,14 +229,17 @@
                             v-show="type != 'body'"
                             :class="isMe ? type == 'merge' ? 'msg-replay' : 'msg-replay me' : 'msg-replay'"
                             @click="scrollToMsg(item.id)">
-                            <template v-if="getMsg(item.id)">
-                                <div>
-                                    <span>{{ getMsgInfo(item.id) }}</span>
-                                    <font-awesome-icon :icon="['fas', 'turn-up']" />
-                                </div>
-                                <MsgBody :data="getMsg(item.id, true)" :type="'body'" />
-                            </template>
-                            <a v-else class="msg-unknown">{{ $t('（查看回复消息）') }}</a>
+                            <div>
+                                <span>{{ getMsgInfo(item.id) }}</span>
+                                <font-awesome-icon v-if="getMsgInfo(item.id) != ''" :icon="['fas', 'turn-up']" />
+                            </div>
+                            <MsgBody v-if="getMsg(item.id)"
+                                :data="getMsg(item.id, true)"
+                                :type="'body'"
+                                :global-me="isMe ? 'Y' : ''" />
+                            <a v-else class="msg-unknown">
+                                {{ getMsgStr(item.id) != '' ? getMsgStr(item.id) : $t('（查看回复消息）') }}
+                            </a>
                         </div>
                         <div v-else-if="item.type == 'poke'" v-once :class="showPock()">
                             <font-awesome-icon class="poke-hand" style="margin-right: 5px;" :icon="['fas', 'fa-hand-point-up']" />
@@ -251,7 +254,7 @@
                     <XmlSegComp v-else :id="data.message_id" :item="data.message.at(0)!.data" />
                 </template>
                 <!-- 链接预览框 -->
-                <div v-if="!isDebugMsg && pageViewInfo !== undefined && Object.keys(pageViewInfo).length > 0"
+                <div v-if="!isDebugMsg && pageViewInfo && Object.keys(pageViewInfo).length > 0"
                     :class="'msg-link-view ' + linkViewStyle">
                     <template v-if="pageViewInfo.type == undefined">
                         <div :class="'bar' + (isMe ? ' me' : '')" />
@@ -379,6 +382,7 @@ import { vUserTooltip } from '@renderer/function/tooltip'
 import {
     getForegroundToneGridFromImageUrl,
     getSizeFromBytes,
+    getTimeConfig,
     getTrueLang,
     getViewTime } from '@renderer/function/utils/systemUtil'
 import { linkView } from '@renderer/function/utils/linkViewUtil'
@@ -403,6 +407,7 @@ import { dbGetImage, hashUrl } from '@renderer/function/utils/localHistoryUtil'
 import JsonSegComp from './msg-component/JsonSegComp.vue'
 import XmlSegComp from './msg-component/XmlSegComp.vue'
 import { addMusic, MusicInfo } from './MusicPlayer.vue'
+import { undefined } from 'zod'
 
 type Msg = any
 type IUser = any
@@ -415,11 +420,13 @@ const {
     data,
     selected,
     type,
+    globalMe,
     imageListHeader,
 } = defineProps<{
     data: any
     selected?: boolean
     type?: 'merge' | 'body'
+    globalMe?: string
     imageListHeader?: Img | undefined
 }>()
 
@@ -669,6 +676,7 @@ function imgLoadFail(event: Event) {
 }
 
 async function parseText(index: number) {
+
     let text = data.message[index].text
 
     const logger = new Logger()
@@ -678,6 +686,12 @@ async function parseText(index: number) {
         const style = 'display:block;margin-top:10px;opacity:0.7;cursor:pointer;'
         text = filtedText + '<a style="' + style +'" data-raw="' + text + '" onclick="this.parentNode.innerText = this.dataset.raw;return false;">' + $t('显示原始消息') + '</a>'
     }
+
+    if(type == 'body') {
+        textIndex.value[index] = text
+        return
+    }
+
     const reg = /(http|https):\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-.,@?^=%&:/~+#]*[\w\-@?^=%&/~+#])?/gi
     text = text.replaceAll(reg, '<a href="" data-link="$&" onclick="return false">$&</a>')
     const linkList = text.match(reg)
@@ -799,18 +813,23 @@ function getMsgInfo(message_id: string) {
         return item.message_id == message_id
     })
     if (list.length === 1 && list[0].message.length > 0) {
-        const time = Intl.DateTimeFormat(trueLang, {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: 'numeric',
-            minute: 'numeric',
-            second: 'numeric',
-        }).format(getViewTime(getViewTime(list[0].time)))
+        const time = Intl.DateTimeFormat(trueLang,
+                getTimeConfig(new Date(getViewTime(list[0].time))))
+            .format(getViewTime(getViewTime(list[0].time)))
         return (list[0].sender.nickname + ' ' + time)
     }
     else return ''
 
+}
+
+function getMsgStr(message_id: string) {
+    const list = chatStore.messageList.filter((item) => {
+        return item.message_id == message_id
+    })
+    if (list.length === 1) {
+        return getMsgRawTxt(list[0])
+    }
+    return ''
 }
 
 function getMsg(message_id: string, filter: boolean = false) {
@@ -818,17 +837,23 @@ function getMsg(message_id: string, filter: boolean = false) {
         return item.message_id == message_id
     })
     if (list.length === 1) {
+        const msg = toRaw(list[0])
+        const textFallbackTypes = new Set([
+            'video',
+            'record',
+            'file',
+            'json',
+            'xml',
+        ])
+        const needTextFallback = (msg.message ?? []).some((seg: any) => textFallbackTypes.has(seg?.type))
+        if (needTextFallback) {
+            return filter ? null : false
+        }
         if(filter) {
-            const msg = toRaw(list[0])
             const mediaTypes = new Set([
                 'image',
                 'mface',
-                'video',
-                'record',
-                'file',
                 'forward',
-                'json',
-                'xml',
             ])
             let hasMedia = false
             const message = (msg.message ?? []).filter((seg: any) => {
@@ -1075,6 +1100,9 @@ onMounted(() => {
     isMe.value =
         Number(authStore.loginInfo.uin) ===
         Number(data.sender.user_id)
+    if(globalMe) {
+        isMe.value = globalMe == 'Y'
+    }
     watch(
         () => chatStore.chatInfo.info.group_members.length,
         () => {

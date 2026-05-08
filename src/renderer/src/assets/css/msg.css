@@ -31,6 +31,7 @@
     max-height: 40vh;
 }
 .message.body-only {
+    width: 100%;
     padding: 0;
     margin: 0;
 }
@@ -85,6 +86,10 @@
 .message.revoke.me {
     display: flex;
     opacity: 0.4;
+}
+.message.body-only > div.message-body {
+    max-width: 100%;
+    width: 100%;
 }
 .message-body a {
     color: var(--color-font);
@@ -342,7 +347,6 @@ div:has(> .msg-img.long-img.light)::after {
     border-radius: 7px;
     overflow: hidden;
     cursor: pointer;
-    overflow: hidden;
     display: flex;
     flex-direction: column;
     padding: 10px;
@@ -361,7 +365,8 @@ div:has(> .msg-img.long-img.light)::after {
     opacity: 0.7;
 }
 .msg-replay > div:last-child span,
-.msg-replay > div:last-child a {
+.msg-replay > div:last-child a,
+.msg-replay > a:last-child {
     font-size: 0.8rem !important;
 }
 .msg-replay.me svg {
