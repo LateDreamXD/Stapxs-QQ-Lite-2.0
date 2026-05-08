@@ -225,7 +225,7 @@ const emit = defineEmits<{
 
 // 加载漫游表情
 if (
-    stickerStore.stickerCache === undefined &&
+    stickerStore.stickerCache && stickerStore.stickerCache.length == 0 &&
     authStore.jsonMap.roaming_stamp
 ) {
     reloadRoamingStamp()

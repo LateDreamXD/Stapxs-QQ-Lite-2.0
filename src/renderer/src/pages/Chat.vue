@@ -827,10 +827,12 @@ onMounted(() => {
     if (session) history.add(session)
 
     updateList(list.length, 0)
-    watch(() => list.length, updateList)
-    watch(
-        () => chat.info.jin_info.list.length,
-        () => {
+    watch(() => list.map((item) => item.message_id + '_' + item.fake_msg),
+        (newIds, oldIds = []) => {
+            updateList(newIds.length, oldIds.length)
+        },
+    )
+    watch(() => chat.info.jin_info.list.length, () => {
             tags.value.isJinLoading = false
         },
     )
@@ -2254,20 +2256,24 @@ function updateList(newLength: number, oldLength: number) {
                 }
                 uiStore.nowGetHistory = false
             }
-            const getImgList = [] as string[]
-            for(const item of list) {
-                if (item.message !== undefined) {
-                    for(const msgItem of item.message) {
-                        if (
-                            msgItem.type === 'image' &&
-                            msgItem.file != 'marketface'
-                        ) {
-                            getImgList.push(msgItem.url)
+
+            const getImgList = () => {
+                const getImgList = [] as string[]
+                for(const item of list) {
+                    if (item.message !== undefined) {
+                        for(const msgItem of item.message) {
+                            if (
+                                msgItem.type === 'image' &&
+                                msgItem.file != 'marketface'
+                            ) {
+                                getImgList.push(msgItem.url)
+                            }
                         }
                     }
                 }
+                return getImgList
             }
-            chatImg.value = Img.fromList(getImgList)
+            chatImg.value = Img.fromList(getImgList())
             if (
                 chatStore.chatInfo.show &&
                 chatStore.chatInfo.show.jump

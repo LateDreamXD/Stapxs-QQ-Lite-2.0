@@ -451,6 +451,9 @@ export function createIpc() {
             title: app.config.globalProperties.$t('关于') + ' ' +
                 app.config.globalProperties.$t('Stapxs QQ Lite'),
             template: markRaw(AboutPan),
+            templateValue: {
+                showUI: false
+            },
             allowQuickClose: false,
         }
         uiStore.popBoxList.push(popInfo)
