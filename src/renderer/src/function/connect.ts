@@ -11,7 +11,7 @@ import app from '@renderer/main'
 
 import { reactive } from 'vue'
 import { LogType, Logger, PopType, PopInfo } from './base'
-import { dispatch, runtimeData } from './msg'
+import { dispatch } from './msg'
 
 import { BotActionElem, LoginCacheElem, ConnectionHistoryItem } from './elements/system'
 import { updateMenu } from '@renderer/function/utils/appUtil'
@@ -19,11 +19,15 @@ import { updateMenu } from '@renderer/function/utils/appUtil'
 import { v4 as uuid } from 'uuid'
 import { getMsgData } from './utils/msgUtil'
 import { backend } from '@renderer/runtime/backend'
+import { useSettingsStore } from '@renderer/state/settings'
+import { useAuthStore } from '@renderer/state/auth'
+import { useConnectionStore } from '@renderer/state/connection'
 
 const logger = new Logger()
 const popInfo = new PopInfo()
 
 let retry = 0
+let forceCloseReason: string | undefined = undefined
 
 export let websocket: WebSocket | undefined = undefined
 
@@ -47,6 +51,7 @@ export class Connector {
         wss: boolean | undefined = undefined,
     ) {
         const { $t } = app.config.globalProperties
+        const settingsStore = useSettingsStore()
         login.creating = true
 
         // 设置连接超时保护
@@ -116,7 +121,7 @@ export class Connector {
                 // 判断连接类型
                 if (document.location.protocol == 'https:') {
                     // 判断连接 URL 的协议，https 优先尝试 wss
-                    runtimeData.tags.connectSsl = true
+                    settingsStore.connectSsl = true
                     url = `wss://${address}?access_token=${token}`
                 }
             } else {
@@ -136,7 +141,9 @@ export class Connector {
             }
             websocket.onclose = (e) => {
                 login.creating = false
-                this.onclose(e.code, e.reason, address, token)
+                const reason = forceCloseReason ?? e.reason
+                forceCloseReason = undefined
+                this.onclose(e.code, reason, address, token)
             }
             websocket.onerror = (e) => {
                 login.creating = false
@@ -152,13 +159,14 @@ export class Connector {
     // 连接事件 =====================================================
 
     static onopen(address: string, token: string | undefined) {
+        const settingsStore = useSettingsStore()
         logger.add(LogType.WS, '连接成功')
         // 保存登录信息
         Option.save('address', address)
         // 保存密钥
         if (
-            runtimeData.sysConfig.save_password &&
-            runtimeData.sysConfig.save_password != ''
+            settingsStore.sysConfig.save_password &&
+            settingsStore.sysConfig.save_password != ''
         ) {
             Option.save('save_password', token)
         }
@@ -231,7 +239,13 @@ export class Connector {
         token: string | undefined,
     ) {
         const { $t } = app.config.globalProperties
+        const connectionStore = useConnectionStore()
 
+        if (connectionStore.metaEventWatchTimer) {
+            clearTimeout(connectionStore.metaEventWatchTimer)
+            connectionStore.metaEventWatchTimer = undefined
+        }
+        connectionStore.metaEventTimeoutTriggered = false
         websocket = undefined
         updateMenu({ parent: 'account', id: 'logout', action: 'visible', value: 'false' })
         updateMenu({ parent: 'account', id: 'userName', action: 'label', value: $t('连接') })
@@ -275,6 +289,14 @@ export class Connector {
      * 正常断开 Websocket 连接
      */
     static close() {
+        const connectionStore = useConnectionStore()
+        if (connectionStore.metaEventWatchTimer) {
+            clearTimeout(connectionStore.metaEventWatchTimer)
+            connectionStore.metaEventWatchTimer = undefined
+        }
+        connectionStore.metaEventTimeoutTriggered = false
+        forceCloseReason = undefined
+
         if(!backend.isWeb()) {
             backend.call('Onebot', 'onebot:close', false)
         } else {
@@ -284,6 +306,29 @@ export class Connector {
             )
             if (websocket) websocket.close(1000)
         }
+    }
+
+    static forceDisconnect(reason: string) {
+        const connectionStore = useConnectionStore()
+        if (connectionStore.metaEventWatchTimer) {
+            clearTimeout(connectionStore.metaEventWatchTimer)
+            connectionStore.metaEventWatchTimer = undefined
+        }
+        if (connectionStore.metaEventTimeoutTriggered && forceCloseReason === reason) {
+            return
+        }
+        connectionStore.metaEventTimeoutTriggered = true
+        forceCloseReason = reason
+
+        if(!backend.isWeb()) {
+            this.onclose(1006, reason, login.address, login.token)
+            return
+        }
+        if (websocket) {
+            websocket.close(4000, reason)
+            return
+        }
+        this.onclose(1006, reason, login.address, login.token)
     }
 
     /**
@@ -296,9 +341,10 @@ export class Connector {
     static async callApi(api: string, args: {[key: string]: any}): Promise<any|undefined|null>{
         // 组建信息
         const echo = uuid()
-        const apiMap = runtimeData.jsonMap[api]
+        const authStore = useAuthStore()
+        const apiMap = authStore.jsonMap[api]
         if (!apiMap) {
-            logger.debug(`${runtimeData.jsonMap.name} 未适配 API ${api}`)
+            logger.debug(`${authStore.jsonMap.name} 未适配 API ${api}`)
             return undefined
         }
 
@@ -458,6 +504,7 @@ function saveConnectionHistory(history: ConnectionHistoryItem[]) {
  * 保存当前连接到历史
  */
 export function saveConnectionToHistory(address: string, token: string, uin?: string, nickname?: string) {
+    const settingsStore = useSettingsStore()
     // 确保 connectionHistory 已初始化
     if (!login.connectionHistory) {
         login.connectionHistory = []
@@ -471,8 +518,8 @@ export function saveConnectionToHistory(address: string, token: string, uin?: st
 
     const newItem: ConnectionHistoryItem = {
         address,
-        token: (runtimeData.sysConfig.save_password &&
-            runtimeData.sysConfig.save_password != '') ? token : '',
+        token: (settingsStore.sysConfig.save_password &&
+            settingsStore.sysConfig.save_password != '') ? token : '',
         uin,
         nickname,
         lastConnected: Date.now()

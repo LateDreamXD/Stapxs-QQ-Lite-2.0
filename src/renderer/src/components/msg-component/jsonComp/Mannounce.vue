@@ -1,13 +1,12 @@
 <template>
-    <div v-if="success" class="msg-json">
-        <p>{{ parsedContent.title }}</p>
+    <div v-if="success" class="msg-json mannounce">
+        <div class="bottom-bar">
+            <font-awesome-icon :icon="['fas', 'bullhorn']" />
+            <span>{{ parsedContent.title }}</span>
+        </div>
         <span>{{ parsedContent.content }}</span>
         <img v-if="parsedContent.img" :src="parsedContent.img.url" alt=""
             @click="viewImg()">
-        <div class="bottom-bar">
-            <font-awesome-icon :icon="['fas', 'bullhorn']" />
-            <span>{{ $t('群公告') }}</span>
-        </div>
     </div>
     <span v-else class="msg-unknown">{{
         '( ' + $t('加载失败') + ': ' + id + ' )'
@@ -18,7 +17,7 @@
 import ViewerCom from '@renderer/components/ViewerCom.vue';
 import { Logger } from '@renderer/function/base'
 import { Img } from '@renderer/function/model/img'
-import { inject, TemplateRef } from 'vue'
+import { inject, ShallowRef } from 'vue'
 import * as z from 'zod'
 
 const { data: jsonData, id } = defineProps<{
@@ -26,8 +25,7 @@ const { data: jsonData, id } = defineProps<{
     id: string,
 }>()
 
-const viewer: TemplateRef<undefined | InstanceType<typeof ViewerCom>> =
-    inject('viewer')!
+const viewer = inject<{ viewer: ShallowRef<InstanceType<typeof ViewerCom> | null> }>('viewer')
 
 const base64Code = z.base64().transform((str) => {
     const binary = atob(str)
@@ -87,7 +85,21 @@ if (!success) {
 }
 
 function viewImg(): void {
-    if (!viewer.value) return
-    viewer.value.open(new Img(parsedContent.img!.url))
+    const viewerInstance = viewer?.viewer.value
+    if (!viewerInstance) return
+    viewerInstance.open(new Img(parsedContent.img!.url))
 }
 </script>
+
+<style scoped>
+.mannounce {
+    padding: 10px 5px 0 5px;
+}
+.mannounce > span {
+    opacity: 1 !important;
+}
+.bottom-bar {
+    margin: -10px -10px 10px -10px !important;
+    background: unset !important;
+}
+</style>

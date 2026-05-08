@@ -1,11 +1,11 @@
-name: lint
+name: check
 on:
     pull_request: # PR 触发
         branches:
             - next
 
 jobs:
-    lint:
+    check:
         runs-on: ubuntu-22.04
         steps:
             - name: 安装构建依赖
@@ -31,13 +31,13 @@ jobs:
             - name: 设置 Nodejs
               uses: actions/setup-node@v4
               with:
-                  node-version: 20.x
+                  node-version: 22.x
                   cache: 'yarn'
             - name: 更新依赖
               run: yarn
             # 代码检查
-            - name: Vue 代码检查
-              run: yarn lint
+            - name: 前端代码检查
+              run: yarn check
 
             - name: Tauri 代码检查
               run: yarn lint:tauri

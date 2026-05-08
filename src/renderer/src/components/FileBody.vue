@@ -31,22 +31,9 @@
             </div>
         </div>
         <template v-if="item.file_id">
-            <div v-if="item.download_percent === undefined"
-                class="download"
+            <div class="download"
                 @click="getFile(item)">
                 <font-awesome-icon :icon="['fas', 'angle-down']" />
-            </div>
-            <svg v-else-if="item.download_percent !== undefined && item.download_percent < 100"
-                class="download-bar"
-                xmlns="http://www.w3.org/2000/svg">
-                <circle cx="50%" cy="50%" r="40%"
-                    stroke-width="15%" fill="none" stroke-linecap="round" />
-                <circle cx="50%" cy="50%" r="40%"
-                    stroke-width="15%" fill="none"
-                    :stroke-dasharray=" item.download_percent === undefined ? '0,10000' : `${(Math.floor(2 * Math.PI * 25) * item.download_percent) / 100},10000` " />
-            </svg>
-            <div v-else class="download">
-                <font-awesome-icon :icon="['fas', 'check']" />
             </div>
         </template>
         <div v-show="item.show_items !== false && item.items !== undefined"
@@ -61,8 +48,8 @@
     </div>
 </template>
 
-<script lang="ts">
-    import { defineComponent } from 'vue'
+<script setup lang="ts">
+    import { i18n } from '@renderer/main'
 
     import {
         getTrueLang,
@@ -74,71 +61,69 @@
         GroupFileFolderElem
     } from '@renderer/function/elements/information'
     import { Connector } from '@renderer/function/connect'
-    import { runtimeData } from '@renderer/function/msg'
+    import { useAuthStore } from '@renderer/state/auth'
+    import { useChatStore } from '@renderer/state/chat'
 
-    export default defineComponent({
-        name: 'FileBody',
-        props: {
-            item: {
-                type: Object as () => GroupFileElem & GroupFileFolderElem,
-                required: true,
-            },
-            chat: {
-                type: Object,
-                required: true,
-            },
-            parent: {
-                type: String,
-                required: false,
-                default: undefined,
-            },
+    defineOptions({ name: 'FileBody' })
+
+    const authStore = useAuthStore()
+    const chatStore = useChatStore()
+    const $t = i18n.global.t
+
+    defineProps({
+        item: {
+            type: Object as () => GroupFileElem & GroupFileFolderElem,
+            required: true,
         },
-        data() {
-            return {
-                trueLang: getTrueLang(),
-                getSize: getSizeFromBytes,
-                toHtml: escape2Html,
-            }
+        chat: {
+            type: Object,
+            required: true,
         },
-        methods: {
-            /**
-             * 下载文件（获取文件下载地址并下载）
-             */
-            getFile(item: GroupFileElem) {
-                const name = runtimeData.jsonMap.file_download?.name
-                if(name) {
-                    Connector.send(
-                        name,
-                        {
-                            group_id: runtimeData.chatInfo.show.id,
-                            file_id: item.file_id,
-                        },
-                        'downloadGroupFile_' + item.file_id + '_' + btoa(encodeURIComponent(item.file_name)),
-                    )
-                    // PS：在发起下载后就要将百分比设置好 …… 因为下载部分不一定立刻会开始
-                    // 这时候如果用户疑惑为什么点了没反应会多次操作的（用户竟是我自己）
-                    item.download_percent = 0
-                }
-            },
-            /**
-             * 加载子文件夹
-             */
-            loadFileDir(item: GroupFileElem & GroupFileFolderElem) {
-                const id = item.folder_id
-
-                const name = runtimeData.jsonMap.group_folder_files?.name
-                if(item.items !== undefined) {
-                    item.show_items = !item.show_items
-                    return
-                }
-
-                if (id && name) {
-                    Connector.send(name, {
-                        folder_id: id,
-                        group_id: runtimeData.chatInfo.show.id,
-                    }, 'getGroupDirFiles_' + id)
-                }
-            },
+        parent: {
+            type: String,
+            required: false,
+            default: undefined,
         },
     })
+
+    const trueLang = getTrueLang()
+    const getSize = getSizeFromBytes
+    const toHtml = escape2Html
+
+    /**
+     * 下载文件（获取文件下载地址并下载）
+     */
+    function getFile(item: GroupFileElem) {
+        const name = authStore.jsonMap.file_download?.name
+        if(name) {
+            Connector.send(
+                name,
+                {
+                    group_id: chatStore.chatInfo.show.id,
+                    file_id: item.file_id,
+                },
+                'downloadGroupFile_' + item.file_id + '_' + btoa(encodeURIComponent(item.file_name)),
+            )
+        }
+    }
+
+    /**
+     * 加载子文件夹
+     */
+    function loadFileDir(item: GroupFileElem & GroupFileFolderElem) {
+        const id = item.folder_id
+
+        const name = authStore.jsonMap.group_folder_files?.name
+        if(item.items !== undefined) {
+            item.show_items = !item.show_items
+            return
+        }
+
+        if (id && name) {
+            Connector.send(name, {
+                folder_id: id,
+                group_id: chatStore.chatInfo.show.id,
+            }, 'getGroupDirFiles_' + id)
+        }
+    }
 </script>

@@ -14,9 +14,11 @@ import app from '@renderer/main'
 import languageConfig from '@renderer/assets/l10n/_l10nconfig.json'
 
 import { i18n } from '@renderer/main'
-import { markRaw, defineAsyncComponent } from 'vue'
+import { markRaw, defineAsyncComponent, reactive } from 'vue'
 import { Logger, LogType, PopInfo, PopType } from './base'
-import { runtimeData } from './msg'
+import { useSettingsStore } from '@renderer/state/settings'
+import { useUIStore } from '@renderer/state/ui'
+import { useChatStore } from '@renderer/state/chat'
 import {
     loadWinColor,
     sendStatEvent,
@@ -31,6 +33,40 @@ import { backend } from '@renderer/runtime/backend'
 import { refreshFavicon } from './favicon'
 
 let cacheConfigs: { [key: string]: any }
+
+// =============== 附加设置结构 ===============
+
+export type ExtraOptionItemType = 'switch' | 'select' | 'input'| 'password' | 'button'
+
+export interface ExtraOptionItem {
+    id: string
+    label: string
+    description?: string
+    type: ExtraOptionItemType
+    icon?: string | [string, string]
+    /**
+     * 绑定到配置中的键名；如需持久化并参与 Option.save / load，请提供。
+     */
+    optionKey?: string
+    defaultValue?: any
+    /**
+     * 选项列表（仅 select 使用）
+     */
+    options?: { value: string | number | boolean; label: string }[]
+    callback?: (value: any) => void
+}
+
+export interface ExtraOptionCard {
+    id: string
+    title: string
+    description?: string
+    items: ExtraOptionItem[]
+}
+
+/**
+ * 附加设置卡片列表：供外部模块动态注册并在“附加”标签页中展示。
+ */
+export const extraOptionCards = reactive<ExtraOptionCard[]>([])
 
 // 设置项的初始值，防止下拉菜单选项为空或者首次使用初始错误
 export const optDefault: { [key: string]: any } = {
@@ -50,6 +86,8 @@ export const optDefault: { [key: string]: any } = {
     opt_auto_win_color: false,
     chat_background: '',
     chat_background_blur: 0,
+    chat_background_align: 'center',
+    chat_background_fit: 'cover',
     chatview_name: '',
     opt_fast_animation: false,
     chat_more_blur: false,
@@ -71,11 +109,12 @@ export const optDefault: { [key: string]: any } = {
     send_face: false,
     use_breakline: true,
     send_key: 'none',
-    close_browser: false,
     close_ga: false,
     open_ga_bot: true,
     record_recent_emoji: '100times' as 'none' | 'order' | '100times' | '500times',
     enable_local_history: false,
+    mixed_load_messages: false,
+    disable_local_history_image_cache: false,
     // Dev
     msg_type: 2,
     log_level: 'err',
@@ -85,30 +124,16 @@ export const optDefault: { [key: string]: any } = {
     openai_api: '',
     openai_token: '',
     openai_model: '',
-    glagame_prompt: `你是 glagame 游戏内的对话助手。你将根据历史的对话内容生成 3 条可供玩家选择回复的选项。
+    glagame_max_tokens: 1000000,
+    glagame_favorability: false,
+    glagame_prompt: `你是一个对话辅助助手，你将根据历史的对话内容生成可供玩家可以选择用来直接回复的内容。
 
-- 输出格式：只输出三条回复文本
 - 玩家默认是温和、体贴、日常向、有点小俏皮。
 - **不要**为玩家本人的消息生成回复，玩家本人的消息仅供上下文参考。
 - 若对话之间时间相隔较久，可自然应对（如"刚看到消息"）。
 - 避免引入与对话无关的新背景。
 
-# 示例
-示例：
-【1763695603000】三硝基猫猫酚：我们学校有实力的课倒是不少
-【1763695610000】三硝基猫猫酚：可惜校区不好
-【1763695614000】三硝基猫猫酚：好多选不上
-【1763695616000】林小槐：我记得我大学选了个商务学院的 AI 选修课
-【1763695620000】林小槐：给我上无聊死了
-
-正确输出示例：
-选课系统真是让人头疼    ← 继续他人话题
-要不下次咱们一起选课吧？    ← 自然衔接
-
-错误示例：
-我觉得 AI 课还挺有意思的    ← 错误，不能改变玩家
-无聊可以找我陪你玩游戏啊    ← 错误，不能回复自己`,
-    glagame_max_messages: 50,
+对话记录中含有玩家本人的消息，请根据提供的当前账号信息自行区分，可以适当模仿玩家的语言风格。`,
 }
 
 // =============== 设置项事件 ===============
@@ -131,9 +156,81 @@ const configFunction: { [key: string]: (value: any) => void } = {
     opt_ind_message: updateChatPan
 }
 
+// =============== 附加设置注册接口 ===============
+
+/**
+ * 注册一个新的附加设置卡片。
+ * 如果 id 已存在，则仅更新标题/描述并返回原有卡片。
+ */
+export function registerExtraOptionCard(card: {
+    id: string
+    title: string
+    description?: string
+}): ExtraOptionCard {
+    const exist = extraOptionCards.find((c) => c.id === card.id)
+    if (exist) {
+        exist.title = card.title
+        exist.description = card.description
+        return exist
+    }
+    const created: ExtraOptionCard = {
+        id: card.id,
+        title: card.title,
+        description: card.description,
+        items: [],
+    }
+    extraOptionCards.push(created)
+    return created
+}
+
+/**
+ * 向指定附加设置卡片中注册一项设置。
+ * 如果目标卡片不存在，将以 id 作为标题自动创建。
+ *
+ * - 提供 optionKey + defaultValue 时，会自动写入 optDefault，
+ *   并在当前配置中缺失时填充与保存，确保后续加载不会被清理。
+ */
+export function registerExtraOptionItem(cardId: string, item: ExtraOptionItem) {
+    if (!cardId || !item || !item.id) return
+
+    let card = extraOptionCards.find((c) => c.id === cardId)
+    if (!card) {
+        card = {
+            id: cardId,
+            title: cardId,
+            items: [],
+        }
+        extraOptionCards.push(card)
+    }
+
+    // 去重：相同 id 直接替换
+    const existIndex = card.items.findIndex((i) => i.id === item.id)
+    if (existIndex >= 0) {
+        card.items.splice(existIndex, 1, item)
+    } else {
+        card.items.push(item)
+    }
+
+    // 如需持久化，补充默认值并保存
+    if (item.optionKey) {
+        const key = item.optionKey
+        if (Object.prototype.hasOwnProperty.call(item, 'defaultValue')) {
+            if (optDefault[key] === undefined) {
+                optDefault[key] = item.defaultValue
+            }
+            if (cacheConfigs && cacheConfigs[key] === undefined) {
+                cacheConfigs[key] = item.defaultValue
+                saveAll()
+            }
+        }
+    }
+}
+
 function updateChatPan() {
-    runtimeData.chatInfo.show.id = 0
-    runtimeData.tags.openSideBar = true
+    const uiStore = useUIStore()
+    const chatStore = useChatStore()
+    chatStore.chatInfo.show.id = 0
+    uiStore.openSideBar = true
 }
 
 
@@ -208,7 +305,8 @@ function updateWinColorOpt(value: boolean) {
 
 function setMsgType(value: any) {
     if (value) {
-        runtimeData.tags.msgType = Number(value)
+        const uiStore = useUIStore()
+        uiStore.msgType = Number(value)
     }
 }
 
@@ -319,12 +417,13 @@ function setAutoDark(value: boolean) {
  * @param mode 颜色模式
  */
 function changeColorMode(mode: string) {
-    if (!runtimeData.tags.firstLoad) {
+    const settingsStore = useSettingsStore()
+    if (!settingsStore.firstLoad) {
         // 启用颜色渐变动画
         document.body.style.transition =
             'background, color, background-color .3s'
     } else {
-        runtimeData.tags.firstLoad = false
+        settingsStore.firstLoad = false
     }
     // 切换颜色
     const match_list = ['color-.*.css', 'prism-.*.css', 'append-.*.css']
@@ -383,7 +482,7 @@ function changeColorMode(mode: string) {
         ).getPropertyValue('--color-main')
     }
     // 记录
-    runtimeData.tags.darkMode = mode === 'dark'
+    settingsStore.darkMode = mode === 'dark'
     // Capacitor: 状态栏颜色（Android）
     if(backend.isMobile()) {
         backend.call('StatusBar', 'setStyle', false, { style: mode.toUpperCase() })
@@ -425,15 +524,16 @@ function changeTheme(id: number) {
  * @param name 文件名
  */
 function changeChatView(name: string | undefined) {
+    const uiStore = useUIStore()
     const safeName = (name || '').toString().replaceAll(/(^['"])|(['"]$)/g, '').trim()
     if (safeName) {
-        runtimeData.pageView.chatView = markRaw(
+        uiStore.pageView.chatView = markRaw(
             defineAsyncComponent(
                 () => import(`@renderer/pages/chat-view/${safeName}.vue`),
             ),
         )
     } else {
-        runtimeData.pageView.chatView = markRaw(
+        uiStore.pageView.chatView = markRaw(
             defineAsyncComponent(() => import('@renderer/pages/Chat.vue')),
         )
     }
@@ -707,6 +807,7 @@ export function runASWEvent(event: Event) {
             $t('此操作将在重启应用后生效，现在就要重启吗？') +
             '</span>'
 
+        const uiStore = useUIStore()
         const popInfo = {
             svg: 'trash-arrow-up',
             html: html,
@@ -726,12 +827,12 @@ export function runASWEvent(event: Event) {
                     text: app.config.globalProperties.$t('取消'),
                     master: true,
                     fun: () => {
-                        runtimeData.popBoxList.shift()
+                        uiStore.popBoxList.shift()
                     },
                 },
             ],
         }
-        runtimeData.popBoxList.push(popInfo)
+        uiStore.popBoxList.push(popInfo)
     }
 }
 
@@ -746,8 +847,9 @@ export function remove(name: string) {
 
 // ================ 工具方法 ================
 export function checkDefault(name: string) {
-    return (runtimeData.sysConfig[name] == undefined ||
-        runtimeData.sysConfig[name] == optDefault[name]) ? '' : 'changed'
+    const settingsStore = useSettingsStore()
+    return (settingsStore.sysConfig[name] == undefined ||
+        settingsStore.sysConfig[name] == optDefault[name]) ? '' : 'changed'
 }
 
 export default {
@@ -760,4 +862,7 @@ export default {
     runASWEvent,
     remove,
     checkDefault,
+    extraOptionCards,
+    registerExtraOptionCard,
+    registerExtraOptionItem,
 }

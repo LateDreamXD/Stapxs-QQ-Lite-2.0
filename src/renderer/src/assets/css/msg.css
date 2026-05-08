@@ -30,6 +30,11 @@
     overflow-y: scroll;
     max-height: 40vh;
 }
+.message.body-only {
+    width: 100%;
+    padding: 0;
+    margin: 0;
+}
 .message > img {
     width: 35px;
     height: 35px;
@@ -81,6 +86,10 @@
 .message.revoke.me {
     display: flex;
     opacity: 0.4;
+}
+.message.body-only > div.message-body {
+    max-width: 100%;
+    width: 100%;
 }
 .message-body a {
     color: var(--color-font);
@@ -151,6 +160,10 @@
 }
 .message-body.me > div {
     background: var(--color-main);
+}
+.message.body-only > div.message-body > div {
+    background: transparent;
+    padding: 0;
 }
 .message-body.super-face > div {
     background: transparent;
@@ -247,6 +260,7 @@
 /* 长图优化样式 */
 div:has(> .msg-img.long-img)::after {
     content: '长图';
+    color: #434343;
     background: rgba(var(--color-card-2-rgb), 0.5);
     width: calc(100% - 10px);
     display: block;
@@ -258,6 +272,9 @@ div:has(> .msg-img.long-img)::after {
     border-radius: 7px;
     font-size: 0.65rem;
     backdrop-filter: blur(20px);
+}
+div:has(> .msg-img.long-img.light)::after {
+    color: #dbdbdb;
 }
 .msg-img.long-img {
     max-height: 40vh;
@@ -330,24 +347,27 @@ div:has(> .msg-img.long-img)::after {
     border-radius: 7px;
     overflow: hidden;
     cursor: pointer;
-    height: 0.9rem;
+    display: flex;
+    flex-direction: column;
     padding: 10px;
 }
-.msg-replay a {
-    line-height: calc(0.9rem + 10px);
-    margin-left: calc(1rem + 10px);
-    word-break: break-all;
-    font-size: 0.9rem;
-    margin-top: -5px;
-    display: block;
+.msg-replay > div:first-child {
+    display: flex;
 }
-.msg-replay svg {
-    margin-bottom: calc(-1rem - 5px);
-    color: var(--color-font-1);
-    margin-right: 5px;
-    margin-top: 1px;
-    display: block;
-    height: 1rem;
+.msg-replay > div:first-child span {
+    margin-right: 25px;
+    font-size: 0.75rem;
+    opacity: 0.7;
+    flex: 1;
+}
+.msg-replay > div:first-child svg {
+    height: 0.7rem;
+    opacity: 0.7;
+}
+.msg-replay > div:last-child span,
+.msg-replay > div:last-child a,
+.msg-replay > a:last-child {
+    font-size: 0.8rem !important;
 }
 .msg-replay.me svg {
     color: var(--color-font-1-r);
@@ -445,14 +465,6 @@ div:has(> .msg-img.long-img)::after {
     margin: 15px 10px 10px 10px;
     height: 20px;
     width: 27px;
-}
-.msg-file > div:nth-child(2) svg.download-bar {
-    --main-size: 24px;
-    margin: 3px 1px -4px 0 !important;
-    padding: 10px;
-}
-.msg-file.me > div:nth-child(2) svg.download-bar > circle:last-child {
-    stroke: var(--color-card-2);
 }
 
 .msg-link-view {
@@ -562,9 +574,13 @@ div:has(> .msg-img.long-img)::after {
 }
 
 .msg-json > div.bottom-bar > span {
+    display: inline-block;
     font-size: 0.9rem;
     opacity: 0.7;
     margin-left: 7px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .msg-json > div.el-vue-amap-container {
@@ -674,16 +690,17 @@ span.user-title.robot {
 .note-nomsg > a {
     background: var(--color-card);
     color: var(--color-font);
+    border-radius: 1rem;
     position: relative;
     font-size: 0.8rem;
     padding: 0 20px;
     z-index: 1;
 }
 .note-nomsg > hr {
-    border: 0 !important;
     border-bottom: 1px solid var(--color-main) !important;
+    margin-bottom: -0.7rem;
+    border: 0 !important;
     opacity: 0.5;
-    margin-bottom: -0.5rem;
 }
 .note-recall > a {
     color: var(--color-main);

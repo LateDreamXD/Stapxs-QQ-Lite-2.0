@@ -13,8 +13,12 @@ import MealHungryPan from '@renderer/components/notice-component/MealHungryPan.v
 import { KeyboardInfo } from '@capacitor/keyboard'
 import { LogType, Logger, PopInfo, PopType } from '@renderer/function/base'
 import { Connector, login } from '@renderer/function/connect'
-import { runtimeData } from '@renderer/function/msg'
 import { BaseChatInfoElem, MenuEventData } from '@renderer/function/elements/information'
+import { useAuthStore } from '@renderer/state/auth'
+import { useContactStore } from '@renderer/state/contact'
+import { useChatStore } from '@renderer/state/chat'
+import { useUIStore } from '@renderer/state/ui'
+import { useSettingsStore } from '@renderer/state/settings'
 import {
     hslToRgb,
     rgbToHsl,
@@ -83,51 +87,14 @@ export function scrollToMsg(seqName: string, showAnimation: boolean, showHighlig
  * @param url 链接
  * @param external 是否外部打开
  */
-export function openLink(url: string, external = false) {
+export function openLink(url: string) {
     // 判断是不是 Electron，是的话打开内嵌 iframe
     if (backend.isDesktop()) {
-        if (!external && !runtimeData.sysConfig.close_browser) {
-            runtimeData.popBoxList = []
-            url = backend.proxyUrl(url)
-            const popInfo = {
-                html: `<iframe src="${url}" class="view-iframe"></iframe>`,
-                full: true,
-                button: [
-                    {
-                        text: app.config.globalProperties.$t(
-                            '请不要在内嵌页面中输入敏感信息，内嵌页面并不安全。',
-                        ),
-                        fun: () => undefined,
-                    },
-                    {
-                        text: app.config.globalProperties.$t('打开…'),
-                        fun: () => {
-                            const shell = window.electron?.shell
-                            if (shell) {
-                                shell.openExternal(url)
-                            } else {
-                                backend.call('', 'sys:openInBrowser', false, backend.unProxyUrl(url))
-                            }
-                            runtimeData.popBoxList.shift()
-                        },
-                    },
-                    {
-                        text: app.config.globalProperties.$t('关闭'),
-                        master: true,
-                        fun: () => {
-                            runtimeData.popBoxList.shift()
-                        },
-                    },
-                ],
-            }
-            runtimeData.popBoxList.push(popInfo)
+        const shell = window.electron?.shell
+        if (shell) {
+            shell.openExternal(url)
         } else {
-            const shell = window.electron?.shell
-            if (shell) {
-                shell.openExternal(url)
-            } else {
-                backend.call('', 'sys:openInBrowser', false, backend.unProxyUrl(url))
-            }
+            backend.call('', 'sys:openInBrowser', false, backend.unProxyUrl(url))
         }
     } else {
         window.open(url)
@@ -139,16 +106,22 @@ export function openLink(url: string, external = false) {
  * @param info 聊天基本信息
  */
 export async function loadHistory(info: BaseChatInfoElem) {
-    runtimeData.messageList = []
+    const authStore = useAuthStore()
+    const chatStore = useChatStore()
+    const settingsStore = useSettingsStore()
+    chatStore.messageList = []
     // 本地有数据时立即显示，同时仍发网络请求以获取最新消息（避免遗漏）
-    if (runtimeData.sysConfig.enable_local_history) {
+    if (
+        settingsStore.sysConfig.enable_local_history &&
+        settingsStore.sysConfig.mixed_load_messages !== false
+    ) {
         const localMsgs = await dbGetLatest(
-            runtimeData.loginInfo.uin,
+            authStore.loginInfo.uin,
             info.id,
             20,
         )
         if (localMsgs.length > 0) {
-            runtimeData.messageList = localMsgs
+            chatStore.messageList = localMsgs
         }
     }
     if (!loadHistoryMessage(info.id, info.type)) {
@@ -165,12 +138,14 @@ export function loadHistoryMessage(
     count = 20,
     echo = 'getChatHistoryFist',
 ) {
+    const authStore = useAuthStore()
+    const chatStore = useChatStore()
     let name: string
-    const fullPage = runtimeData.jsonMap.message_list?.pagerType == 'full'
-    if (runtimeData.jsonMap.message_list && type != 'group') {
-        name = runtimeData.jsonMap.message_list.private_name
+    const fullPage = authStore.jsonMap.message_list?.pagerType == 'full'
+    if (authStore.jsonMap.message_list && type != 'group') {
+        name = authStore.jsonMap.message_list.private_name
     } else {
-        name = runtimeData.jsonMap.message_list.name
+        name = authStore.jsonMap.message_list.name
     }
 
     Connector.send(
@@ -179,7 +154,7 @@ export function loadHistoryMessage(
             group_id: type == 'group' ? id : undefined,
             user_id: type != 'group' ? id : undefined,
             message_id: 0,
-            count: fullPage ? runtimeData.messageList.length + count : count,
+            count: fullPage ? chatStore.messageList.length + count : count,
         },
         echo,
     )
@@ -192,18 +167,20 @@ export function loadHistoryMessage(
 export function reloadUsers() {
     // 加载用户列表
     if (login.status) {
-        runtimeData.userList = []
+        const authStore = useAuthStore()
+        const contactStore = useContactStore()
+        contactStore.userList = []
         let friendName = 'get_friend_list'
         let groupName = 'get_group_list'
-        if (runtimeData.jsonMap.user_list?.name) {
-            friendName = runtimeData.jsonMap.user_list.name.split('|')[0]
-            groupName = runtimeData.jsonMap.user_list.name.split('|')[1]
+        if (authStore.jsonMap.user_list?.name) {
+            friendName = authStore.jsonMap.user_list.name.split('|')[0]
+            groupName = authStore.jsonMap.user_list.name.split('|')[1]
         } else if (
-            runtimeData.jsonMap.friend_list?.name &&
-            runtimeData.jsonMap.group_list?.name
+            authStore.jsonMap.friend_list?.name &&
+            authStore.jsonMap.group_list?.name
         ) {
-            friendName = runtimeData.jsonMap.friend_list.name
-            groupName = runtimeData.jsonMap.group_list.name
+            friendName = authStore.jsonMap.friend_list.name
+            groupName = authStore.jsonMap.group_list.name
         }
         Connector.send(friendName, {}, 'getFriendList')
         Connector.send(groupName, {}, 'getGroupList')
@@ -227,17 +204,19 @@ export function reloadCookies(domain = 'qun.qq.com') {
  * @param msgId
  */
 export function jumpToChat(userId: string, msgId: string) {
-    if (runtimeData.chatInfo.show.id != Number(userId)) {
+    const chatStore = useChatStore()
+    const contactStore = useContactStore()
+    if (chatStore.chatInfo.show.id != Number(userId)) {
         const body = document.getElementById('user-' + userId)
         if (body === null) {
             // 从缓存列表里寻找这个 ID
-            for (let i = 0; i < runtimeData.userList.length; i++) {
-                const item = runtimeData.userList[i]
+            for (let i = 0; i < contactStore.userList.length; i++) {
+                const item = contactStore.userList[i]
                 const id =
                     item.user_id !== undefined ? item.user_id : item.group_id
                 if (String(id) === userId) {
                     // 把它插入到显示列表的第一个
-                    runtimeData.showList?.unshift(item)
+                    contactStore.showList?.unshift(item)
                     nextTick(() => {
                         const bodyNext = document.getElementById(
                             'user-' + userId,
@@ -264,14 +243,17 @@ export function jumpToChat(userId: string, msgId: string) {
 /**
  * 下载文件
  * @param url 文件链接
- * @param process 下载中回调
+ * @param name 文件名
+ * @param onprocess 下载进度回调
+ * @param oncancel 下载取消回调
+ * @returns 清理函数，用于移除监听器
  */
 export function downloadFile(
     url: string,
     name: string,
     onprocess: (event: ProgressEvent & { [key: string]: any }) => undefined,
     oncancel: (event: ProgressEvent & { [key: string]: any }) => undefined,
-) {
+): () => void {
     if (document.location.protocol == 'https:') {
         // 判断下载文件 URL 的协议
         // PS：Chrome 不会对 http 下载的文件进行协议升级
@@ -292,17 +274,26 @@ export function downloadFile(
         } catch (e) {
             logger.error(e as Error, '下载文件失败')
         }
+        return () => {} // Web 平台不需要清理
     } else {
-        backend.addListener(undefined, 'sys:downloadBack', (event, data) => {
+        // 创建命名回调函数以便后续移除
+        const processCallback = (event: any, data: any) => {
             onprocess(data || event.payload)
-        })
-        backend.addListener(undefined, 'sys:downloadCancel', (event, data) => {
+        }
+        const cancelCallback = (event: any, data: any) => {
             oncancel(data || event.payload)
-        })
+        }
+        backend.addListener(undefined, 'sys:downloadBack', processCallback)
+        backend.addListener(undefined, 'sys:downloadCancel', cancelCallback)
         backend.call(undefined, 'sys:download', false, {
             downloadPath: url,
             fileName: name,
         })
+        // 返回清理函数
+        return () => {
+            backend.removeListener(undefined, 'sys:downloadBack', processCallback)
+            backend.removeListener(undefined, 'sys:downloadCancel', cancelCallback)
+        }
     }
 }
 
@@ -365,6 +356,7 @@ export async function loadWinColor() {
 */
 export function createMenu() {
     const { $t } = app.config.globalProperties
+    const contactStore = useContactStore()
     // MacOS：初始化菜单
     if (backend.isDesktop()) {
         // 初始化菜单
@@ -400,7 +392,7 @@ export function createMenu() {
         menuTitles.login = $t('连接')
         menuTitles.logout = $t('登出')
         menuTitles.userList = $t('用户列表（{count}）', {
-            count: runtimeData.userList.length,
+            count: contactStore.userList.length,
         })
         menuTitles.flushUser = $t('刷新列表…')
 
@@ -422,6 +414,8 @@ export function updateMenu(config: { parent: string, id: string; action: string;
 * Electron：注册系统 IPC
 */
 export function createIpc() {
+    const contactStore = useContactStore()
+    const uiStore = useUIStore()
     // 服务发现
     backend.addListener(undefined, 'sys:serviceFound', (event, data) => {
         const info = data ?? event.payload
@@ -441,14 +435,14 @@ export function createIpc() {
         sendMsgRaw(info.id, info.type,
             parseMsg(info.content, [{ type: 'reply', id: String(info.msg) }], []), true)
         // 去消息列表内寻找，去除新消息标记
-        const item = runtimeData.baseOnMsgList.get(info.id)
+        const item = contactStore.baseOnMsgList.get(info.id)
         if (item) {
             if (item.new_msg) {
                 item.new_msg = false
-                runtimeData.newMsgCount--
+                contactStore.newMsgCount--
             }
             item.highlight = undefined
-            runtimeData.baseOnMsgList.set(Number(info.id), item)
+            contactStore.baseOnMsgList.set(Number(info.id), item)
         }
     })
     // 应用功能
@@ -457,9 +451,12 @@ export function createIpc() {
             title: app.config.globalProperties.$t('关于') + ' ' +
                 app.config.globalProperties.$t('Stapxs QQ Lite'),
             template: markRaw(AboutPan),
+            templateValue: {
+                showUI: false
+            },
             allowQuickClose: false,
         }
-        runtimeData.popBoxList.push(popInfo)
+        uiStore.popBoxList.push(popInfo)
     })
     backend.addListener(undefined, 'sys:handleUri', (event, data) => {
         logger.info(JSON.stringify(data ?? event.payload))
@@ -556,6 +553,7 @@ export async function loadMobile() {
             })
             // 注册相关事件
             backend.addListener('LocalNotifications', 'localNotificationActionPerformed', (info) => {
+                const contactStore = useContactStore()
                 const notification =
                     info.notification as LocalNotificationSchema
                 if (info.actionId == 'tap') {
@@ -571,14 +569,14 @@ export async function loadMobile() {
                         true
                     )
                     // 去消息列表内寻找，去除新消息标记
-                    const item = runtimeData.baseOnMsgList.get(Number(notification.extra.userId))
+                    const item = contactStore.baseOnMsgList.get(Number(notification.extra.userId))
                     if (item) {
                         if (item.new_msg) {
                             item.new_msg = false
-                            runtimeData.newMsgCount--
+                            contactStore.newMsgCount--
                         }
                         item.highlight = undefined
-                        runtimeData.baseOnMsgList.set(Number(notification.extra.userId), item)
+                        contactStore.baseOnMsgList.set(Number(notification.extra.userId), item)
                     }
                 }
             })
@@ -601,12 +599,15 @@ export async function loadMobile() {
             // 干脆把所有的 iOS 版本处理方法都改为内部避让
             if (backend.platform == 'ios') {
                 const baseApp = document.getElementById('base-app')
+                // 使用键盘高度减去底部安全区域，不添加额外偏移量
+                // 避免硬编码的 +100 导致 WebView 定位错误，引发键盘焦点丢失
+                const keyboardOffset = Math.max(0, keyboardHeight - safeArea.bottom)
                 if (safeArea && baseApp) {
-                    baseApp.style.setProperty('--safe-area-bottom', (keyboardHeight - safeArea.bottom + 100) + 'px')
+                    baseApp.style.setProperty('--safe-area-bottom', keyboardOffset + 'px')
                 }
                 // 调整菜单高度
                 if (safeArea && tabBar) {
-                    tabBar.style.setProperty('padding-bottom', (keyboardHeight - safeArea.bottom + 100) + 'px', 'important')
+                    tabBar.style.setProperty('padding-bottom', keyboardOffset + 'px', 'important')
                 }
             }
 
@@ -817,6 +818,7 @@ function showUpadteLog(data: any) {
     }
 }
 function showReleaseLog(data: any, isUpdated: boolean) {
+    const uiStore = useUIStore()
     const { $t } = app.config.globalProperties
     let msg = data.body
     // 处理 title，取开头到下一个 “\r\n” 之间的内容
@@ -847,12 +849,12 @@ function showReleaseLog(data: any, isUpdated: boolean) {
     const buttonGoUpdate = (!backend.isWeb()) ? [
         {
             text: $t('知道了'),
-            fun: () => runtimeData.popBoxList.shift(),
+            fun: () => uiStore.popBoxList.shift(),
         },
         {
             text: $t('下载更新…'),
             master: true,
-            fun: () => openLink(data.html_url, true),
+            fun: () => openLink(data.html_url),
         },
     ] : [
         {
@@ -871,24 +873,25 @@ function showReleaseLog(data: any, isUpdated: boolean) {
         button: isUpdated ? [
             {
                 text: $t('查看…'),
-                fun: () => openLink(data.html_url, true),
+                fun: () => openLink(data.html_url),
             },
             {
                 text: $t('知道了'),
                 master: true,
                 fun: () => {
-                    runtimeData.popBoxList.shift()
+                    uiStore.popBoxList.shift()
                 },
             },
         ] : buttonGoUpdate,
     }
-    runtimeData.popBoxList.push(popInfo)
+    uiStore.popBoxList.push(popInfo)
 }
 
 /**
  * 获取并展示最近5条更新记录
  */
 export function showReleaseHistory() {
+    const uiStore = useUIStore()
     const { $t } = app.config.globalProperties
     const repoName = import.meta.env.VITE_APP_REPO_NAME
     const packageUrl = `https://api.github.com/repos/${repoName}/releases?per_page=5`
@@ -933,12 +936,12 @@ export function showReleaseHistory() {
                             text: $t('关闭'),
                             master: true,
                             fun: () => {
-                                runtimeData.popBoxList.shift()
+                                uiStore.popBoxList.shift()
                             },
                         },
                     ],
                 }
-                runtimeData.popBoxList.push(popInfo)
+                uiStore.popBoxList.push(popInfo)
             })
         } else {
             new PopInfo().add(
@@ -960,6 +963,7 @@ export function showReleaseHistory() {
 * 显示使用次数弹窗
 */
 export function checkOpenTimes() {
+    const uiStore = useUIStore()
     if (import.meta.env.DEV) return     // 开发环境不显示
     const { $t } = app.config.globalProperties
     const repoName = import.meta.env.VITE_APP_REPO_NAME
@@ -984,7 +988,7 @@ export function checkOpenTimes() {
                     {
                         text: $t('不要'),
                         fun: () => {
-                            runtimeData.popBoxList.shift()
+                            uiStore.popBoxList.shift()
                         },
                     },
                     {
@@ -994,12 +998,12 @@ export function checkOpenTimes() {
                             openLink(
                                 `https://github.com/${repoName}`,
                             )
-                            runtimeData.popBoxList.shift()
+                            uiStore.popBoxList.shift()
                         },
                     },
                 ],
             }
-            runtimeData.popBoxList.push(popInfo)
+            uiStore.popBoxList.push(popInfo)
         }
         if (getTimes % 50 == 0 && import.meta.env.VITE_APP_SPONSORS_URL) {
             const popInfo = {
@@ -1011,19 +1015,19 @@ export function checkOpenTimes() {
                         text: $t('打开…'),
                         fun: () => {
                             openLink(import.meta.env.VITE_APP_SPONSORS_URL)
-                            runtimeData.popBoxList.shift()
+                            uiStore.popBoxList.shift()
                         },
                     },
                     {
                         text: $t('好耶'),
                         master: true,
                         fun: () => {
-                            runtimeData.popBoxList.shift()
+                            uiStore.popBoxList.shift()
                         },
                     },
                 ],
             }
-            runtimeData.popBoxList.push(popInfo)
+            uiStore.popBoxList.push(popInfo)
         }
     } else {
         localStorage.setItem('times', '1')
@@ -1038,7 +1042,7 @@ export function checkOpenTimes() {
             allowClose: false,
             button: [],
         }
-        runtimeData.popBoxList.push(popInfo)
+        uiStore.popBoxList.push(popInfo)
         localStorage.setItem('guide', guideVersion.toString())
     }
 }
@@ -1047,6 +1051,7 @@ export function checkOpenTimes() {
 * 显示全局公告弹窗
 */
 export function checkNotice() {
+    const uiStore = useUIStore()
     let url = 'https://lib.stapxs.cn/download/stapxs-qq-lite/notice-config.json'
     if (import.meta.env.DEV) {
         url = 'notice_local.json'
@@ -1103,7 +1108,7 @@ export function checkNotice() {
                                             noticeShow.toString(),
                                         )
                                         // 关闭弹窗
-                                        runtimeData.popBoxList.shift()
+                                        uiStore.popBoxList.shift()
                                     },
                                 },
                             ]
@@ -1137,7 +1142,7 @@ export function checkNotice() {
                                 logger.error(null, '未知的公告类型')
                             }
                             if (popInfo) {
-                                runtimeData.popBoxList.push(popInfo)
+                                uiStore.popBoxList.push(popInfo)
                             }
                         }
                     }
@@ -1203,7 +1208,8 @@ export function loadJsonMap(name: string) {
                     logger.system('非常抱歉开发者，已帮阁下将映射表重定向加载为 ：' + msgPath?.name + ' （慌张）')
                 }
             }
-            runtimeData.jsonMap = msgPath
+            const authStore = useAuthStore()
+            authStore.jsonMap = msgPath
         } catch (ex) {
             logger.system('很抱歉开发者，映射表加载失败 ……' + ex)
         }
@@ -1238,13 +1244,14 @@ export function sendIdentifyData(data: { [key: string]: any }) {
 * @param open 是否开启通知
 */
 export function changeGroupNotice(group_id: number, open: boolean) {
+    const authStore = useAuthStore()
     const noticeInfo = option.get('notice_group') ?? {}
-    const list = noticeInfo[runtimeData.loginInfo.uin]
+    const list = noticeInfo[authStore.loginInfo.uin]
     if (open) {
         if (list) {
             list.push(group_id)
         } else {
-            noticeInfo[runtimeData.loginInfo.uin] = [group_id]
+            noticeInfo[authStore.loginInfo.uin] = [group_id]
         }
         option.save('notice_group', noticeInfo)
     } else {
@@ -1564,6 +1571,24 @@ function createVMenu(): Directive<HTMLElement, (event: MenuEventData) => void> {
     type Binding = DirectiveBinding<(event: MenuEventData) => void> & { modifiers: { prevent?: boolean, stop?: boolean } }
 
     let activeMenu = false
+    const activePenPointers = new Set<number>()
+
+    const isPenTouchEvent = (event: TouchEvent) => {
+        if (activePenPointers.size > 0) return true
+        const touch = event.changedTouches[0] || event.touches[0]
+        const touchType = (touch as Touch & { touchType?: string })?.touchType
+        return touchType === 'stylus'
+    }
+
+    const recordPointerType = (event: PointerEvent, isStart: boolean) => {
+        if (event.pointerType !== 'pen') return
+        if (isStart) {
+            activePenPointers.add(event.pointerId)
+            activeMenu = false
+        } else {
+            activePenPointers.delete(event.pointerId)
+        }
+    }
 
     // 右键菜单事件数据类型
     const {
@@ -1611,15 +1636,21 @@ function createVMenu(): Directive<HTMLElement, (event: MenuEventData) => void> {
                 binding.value(data)
             }, options)
             el.addEventListener('touchstart', (event) => {
+                if (isPenTouchEvent(event)) return
                 menuTouchHandle(event, binding)
                 touchStartTime = Date.now()
             }, options)
             el.addEventListener('touchmove', (event) => {
+                if (isPenTouchEvent(event)) return
                 if (prevent && activeMenu) event.preventDefault()
                 if (stop && activeMenu) event.stopPropagation()
                 menuTouchHandle(event, binding)
             }, options)
             el.addEventListener('touchend', (event) => {
+                if (isPenTouchEvent(event)) {
+                    activeMenu = false
+                    return
+                }
                 if (prevent && activeMenu) event.preventDefault()
                 if (stop && activeMenu) event.stopPropagation()
                 menuTouchEnd(event)
@@ -1627,6 +1658,15 @@ function createVMenu(): Directive<HTMLElement, (event: MenuEventData) => void> {
                 // 快速点击则触发点击事件
                 if (Date.now() - touchStartTime < 200)
                     event.target?.['click']?.()
+            }, options)
+            el.addEventListener('pointerdown', (event) => {
+                recordPointerType(event, true)
+            }, options)
+            el.addEventListener('pointerup', (event) => {
+                recordPointerType(event, false)
+            }, options)
+            el.addEventListener('pointercancel', (event) => {
+                recordPointerType(event, false)
             }, options)
 
                 // 绑定控制器
@@ -1837,6 +1877,24 @@ function createVMove<T extends HTMLElement>(): Directive<T, VMoveOptions<T>> {
                 speedList: [] as number[],
                 touchLast: null as null | TouchEvent,
             }
+            const activePenPointers = new Set<number>()
+
+            const isPenTouchEvent = (event: TouchEvent) => {
+                if (activePenPointers.size > 0) return true
+                const touch = event.changedTouches[0] || event.touches[0]
+                const touchType = (touch as Touch & { touchType?: string })?.touchType
+                return touchType === 'stylus'
+            }
+
+            const recordPointerType = (event: PointerEvent, isStart: boolean) => {
+                if (event.pointerType !== 'pen') return
+                if (isStart) {
+                    activePenPointers.add(event.pointerId)
+                    moveFlag.touchLast = null
+                } else {
+                    activePenPointers.delete(event.pointerId)
+                }
+            }
 
             const getPxValue = (option: { type: 'px' | '%', value: number }) => {
                 if (option.type === 'px') return option.value
@@ -1876,6 +1934,7 @@ function createVMove<T extends HTMLElement>(): Directive<T, VMoveOptions<T>> {
             // 触屏开始
             const chatMoveStartEvent = (event: TouchEvent) => {
                 if (moveFlag.onScroll === 'wheel') return
+                if (isPenTouchEvent(event)) return
                 // 触屏开始时，记录触摸点
                 moveFlag.touchLast = event
             }
@@ -1883,6 +1942,7 @@ function createVMove<T extends HTMLElement>(): Directive<T, VMoveOptions<T>> {
             // 触屏滑动
             const chatMoveEvent = (event: TouchEvent) => {
                 if (moveFlag.onScroll === 'wheel') return
+                if (isPenTouchEvent(event)) return
                 if (!moveFlag.touchLast) return
                 const touch = event.changedTouches[0]
                 const lastTouch = moveFlag.touchLast.changedTouches[0]
@@ -1902,6 +1962,10 @@ function createVMove<T extends HTMLElement>(): Directive<T, VMoveOptions<T>> {
             // 触屏滑动结束
             const chatMoveEndEvent = (event: TouchEvent) => {
                 if (moveFlag.onScroll === 'wheel') return
+                if (isPenTouchEvent(event)) {
+                    moveFlag.touchLast = null
+                    return
+                }
                 const touch = event.changedTouches[0]
                 const lastTouch = moveFlag.touchLast?.changedTouches[0]
                 if (lastTouch) {
@@ -2008,6 +2072,15 @@ function createVMove<T extends HTMLElement>(): Directive<T, VMoveOptions<T>> {
             const controller = new AbortController()
             const listenerOptions = { signal: controller.signal }
             el.addEventListener('wheel', chatWheelEvent, { ...listenerOptions, passive: false })
+            el.addEventListener('pointerdown', (event) => {
+                recordPointerType(event, true)
+            }, listenerOptions)
+            el.addEventListener('pointerup', (event) => {
+                recordPointerType(event, false)
+            }, listenerOptions)
+            el.addEventListener('pointercancel', (event) => {
+                recordPointerType(event, false)
+            }, listenerOptions)
             el.addEventListener('touchstart', chatMoveStartEvent, listenerOptions)
             el.addEventListener('touchmove', chatMoveEvent, listenerOptions)
             el.addEventListener('touchend', chatMoveEndEvent, listenerOptions)

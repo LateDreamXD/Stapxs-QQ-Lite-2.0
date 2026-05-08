@@ -13,29 +13,33 @@
     <div :id="'chat-' + data.message_id"
         ref="msgMain"
         v-menu.prevent="event => $emit('showMenu', event, data)"
-        :class="'message' +
-            (type ? ' ' + type : '') +
-            (data.revoke ? ' revoke' : '') +
-            (isMe ? ' me' : '') +
-            (selected ? ' selected' : '') +
-            (runtimeData.sysConfig.opt_ind_message === true ? ' right' : '')"
+        :class="[
+            'message', type ?? '',
+            { 'revoke': data.revoke },
+            { 'me': isMe && type != 'body' },
+            { 'selected': selected },
+            { 'right': settingsStore.sysConfig.opt_ind_message === true && type != 'body' },
+            { 'body-only': type == 'body' }
+        ]"
         :data-raw="getMsgRawTxt(data)"
         :data-sender="data.sender.user_id"
         :data-time="data.time"
         @mouseleave="hiddenUserInfo">
-        <img v-menu.prevent="event => $emit('showMenu', event, data)"
-            v-user-tooltip="() => getUserById(data.sender.user_id)"
-            name="avatar"
-            :src="'https://q1.qlogo.cn/g?b=qq&s=0&nk=' + data.sender.user_id"
-            :alt="data.sender.card ? data.sender.card : data.sender.nickname"
-            @dblclick="sendPoke">
-        <div v-if="data.fake_msg == true"
-            :class="'sending left' + (isMe ? ' me' : '')">
-            <font-awesome-icon :icon="['fas', 'spinner']" />
-        </div>
+        <template v-if="type != 'body'">
+            <img v-menu.prevent="event => $emit('showMenu', event, data)"
+                v-user-tooltip="() => getUserById(data.sender.user_id)"
+                name="avatar"
+                :src="'https://q1.qlogo.cn/g?b=qq&s=0&nk=' + data.sender.user_id"
+                :alt="data.sender.card ? data.sender.card : data.sender.nickname"
+                @dblclick="sendPoke">
+            <div v-if="data.fake_msg == true"
+                :class="'sending left' + (isMe ? ' me' : '')">
+                <font-awesome-icon :icon="['fas', 'spinner']" />
+            </div>
+        </template>
         <div :class="msgBodyClass">
-            <header>
-                <template v-if="runtimeData.chatInfo.show.type == 'group'">
+            <header v-if="type != 'body'">
+                <template v-if="chatStore.chatInfo.show.type == 'group'">
                     <span v-if="senderInfo && isRobot(senderInfo.user_id)" class="robot">{{ $t('机器人') }}</span>
                     <span v-if="senderInfo?.role == 'owner'" class="owner">{{ $t('群主') }}</span>
                     <span v-else-if="senderInfo?.role == 'admin'" class="admin">{{ $t('管理员') }}</span>
@@ -48,7 +52,7 @@
                     {{ data.sender.card ? data.sender.card : data.sender.nickname }}
                 </a>
                 <a v-else>
-                    {{ isMe ? runtimeData.loginInfo.nickname : runtimeData.chatInfo.show.name }}
+                    {{ isMe ? authStore.loginInfo.nickname : chatStore.chatInfo.show.name }}
                 </a>
                 <a v-if="selected" class="time">
                     {{ Intl.DateTimeFormat(trueLang, {
@@ -107,6 +111,7 @@
                             :alt="$t('图片')"
                             :class=" imgStyle(data.message.length, Number(index), isFace(item))"
                             :src="getImgSrc(item.url)"
+                            data-type="image"
                             @load="imageLoaded"
                             @error="imgLoadFail"
                             @click="imgClick(item.url)">
@@ -131,7 +136,7 @@
                                 <div>
                                     <a>
                                         <font-awesome-icon :icon="['fas', 'file']" />
-                                        {{ runtimeData.chatInfo.show.type == 'group' ? $t('群文件') : $t('离线文件') }}
+                                        {{ chatStore.chatInfo.show.type == 'group' ? $t('群文件') : $t('离线文件') }}
                                     </a>
                                     <p>{{ loadFileBase( item, item.name ?? item.file_name, data.message_id) }}</p>
                                 </div>
@@ -139,20 +144,8 @@
                             </div>
                             <div>
                                 <font-awesome-icon
-                                    v-if="item.download_percent === undefined"
                                     :icon="['fas', 'angle-down']"
                                     @click="downloadFile(item, data.message_id)" />
-                                <svg v-else-if="item.download_percent !== undefined && item.download_percent < 100"
-                                    class="download-bar"
-                                    xmlns="http://www.w3.org/2000/svg">
-                                    <circle cx="50%" cy="50%" r="40%"
-                                        stroke-width="15%" ill="none" stroke-linecap="round" />
-                                    <circle cx="50%" cy="50%" r="40%"
-                                        stroke-width="15%" fill="none"
-                                        :stroke-dasharray="item.download_percent === undefined ? '0,10000' :
-                                            `${(Math.floor(2 * Math.PI * 25) * item.download_percent) / 100},10000`" />
-                                </svg>
-                                <font-awesome-icon v-else :icon="['fas', 'check']" />
                             </div>
                             <div v-if="data.fileView && Object.keys(data.fileView).length > 0"
                                 class="file-view">
@@ -233,12 +226,19 @@
                             </div>
                         </template>
                         <div v-else-if="item.type == 'reply'"
+                            v-show="type != 'body'"
                             :class="isMe ? type == 'merge' ? 'msg-replay' : 'msg-replay me' : 'msg-replay'"
                             @click="scrollToMsg(item.id)">
-                            <font-awesome-icon :icon="['fas', 'reply']" />
-                            <a :class="getRepMsg(item.id) ? '' : 'msg-unknown'"
-                                style="cursor: pointer">
-                                {{ getRepMsg(item.id) ?? $t('（查看回复消息）') }}
+                            <div>
+                                <span>{{ getMsgInfo(item.id) }}</span>
+                                <font-awesome-icon v-if="getMsgInfo(item.id) != ''" :icon="['fas', 'turn-up']" />
+                            </div>
+                            <MsgBody v-if="getMsg(item.id)"
+                                :data="getMsg(item.id, true)"
+                                :type="'body'"
+                                :global-me="isMe ? 'Y' : ''" />
+                            <a v-else class="msg-unknown">
+                                {{ getMsgStr(item.id) != '' ? getMsgStr(item.id) : $t('（查看回复消息）') }}
                             </a>
                         </div>
                         <div v-else-if="item.type == 'poke'" v-once :class="showPock()">
@@ -254,7 +254,7 @@
                     <XmlSegComp v-else :id="data.message_id" :item="data.message.at(0)!.data" />
                 </template>
                 <!-- 链接预览框 -->
-                <div v-if="!isDebugMsg && pageViewInfo !== undefined && Object.keys(pageViewInfo).length > 0"
+                <div v-if="!isDebugMsg && pageViewInfo && Object.keys(pageViewInfo).length > 0"
                     :class="'msg-link-view ' + linkViewStyle">
                     <template v-if="pageViewInfo.type == undefined">
                         <div :class="'bar' + (isMe ? ' me' : '')" />
@@ -308,29 +308,28 @@
                                 {{ pageViewInfo.data.stat.like }}
                             </div>
                         </div>
-                        <div v-else-if="pageViewInfo.type == 'music163'" class="link-view-music163">
-                            <div>
-                                <img :src="pageViewInfo.data.cover">
-                                <div :id="'music163-audio-' + data.message_id" :class="isMe ? 'me' : ''">
+                        <div v-else-if="pageViewInfo.type == 'music163'" style="width: 100%;">
+                            <div class="link-view-music163">
+                                <div>
                                     <a>{{ pageViewInfo.data.info.name }}
                                         <a v-if="pageViewInfo.data.info.free != null">{{ $t('（试听）') }}</a>
                                     </a>
                                     <span>{{ pageViewInfo.data.info.author.join('/') }}</span>
-                                    <audio :src="backend.proxyUrl(pageViewInfo.data.play_link)"
-                                        @loadedmetadata="audioLoaded()"
-                                        @timeupdate="audioUpdate()" />
-                                    <div>
-                                        <input value="0" min="0" step="0.1"
-                                            type="range" @input="audioChange()">
-                                        <div><div /><div /></div>
-                                        <font-awesome-icon v-if="!pageViewInfo.data.loaded" :icon="['fas', 'spinner']" spin />
-                                        <template v-else>
-                                            <font-awesome-icon v-if="!pageViewInfo.data.play" :icon="['fas', 'play']" @click="audioControll()" />
-                                            <font-awesome-icon v-else :icon="['fas', 'pause']" @click="audioControll()" />
-                                        </template>
-                                        <span>00:00 / 00:00</span>
-                                    </div>
                                 </div>
+                                <img :src="pageViewInfo.data.cover">
+                                <font-awesome-icon
+                                    :icon="['fas', 'play']"
+                                    :class="{ light: pageViewInfo.data.cover_light }"
+                                    @click="sendPlay({
+                                        title: pageViewInfo.data.info.name,
+                                        author: pageViewInfo.data.info.author,
+                                        url: pageViewInfo.data.play_link,
+                                        type: 'music163',
+                                        cover: pageViewInfo.data.cover,
+                                        free: pageViewInfo.data.info.free,
+                                        time: pageViewInfo.data.info.time,
+                                        data: pageViewInfo.data.id,
+                                    })" />
                             </div>
                         </div>
                     </template>
@@ -347,7 +346,7 @@
                 <TransitionGroup name="emoji-like">
                     <template v-for="info, id in data.emojis" :key="'respond-' + data.message_id + '-' + id">
                         <div :class="{
-                            'me-send': info.includes(runtimeData.loginInfo.uin),
+                            'me-send': info.includes(authStore.loginInfo.uin),
                         }">
                             <EmojiFace :emoji="Emoji.get(Number(id))!" />
                             <span>{{ info.length }}</span>
@@ -365,9 +364,9 @@ import Option from '@renderer/function/option'
 import markdownit from 'markdown-it'
 
 import { MsgBodyFuns as ViewFuns } from '@renderer/function/model/msg-body'
-import { defineComponent, provide, useTemplateRef } from 'vue'
+import { watch, onMounted, nextTick, provide, inject, useTemplateRef, ref, toRaw } from 'vue'
 import { Connector } from '@renderer/function/connect'
-import { runtimeData } from '@renderer/function/msg'
+import { useSettingsStore } from '@renderer/state/settings'
 import { Logger, LogType, PopInfo, PopType } from '@renderer/function/base'
 import { StringifyOptions } from 'querystring'
 import { getMsgRawTxt, pokeAnime } from '@renderer/function/utils/msgUtil'
@@ -381,12 +380,25 @@ import {
 } from '@renderer/function/utils/appUtil'
 import { vUserTooltip } from '@renderer/function/tooltip'
 import {
+    getForegroundToneGridFromImageUrl,
     getSizeFromBytes,
+    getTimeConfig,
     getTrueLang,
     getViewTime } from '@renderer/function/utils/systemUtil'
 import { linkView } from '@renderer/function/utils/linkViewUtil'
 import { MenuEventData, MergeStackData } from '@renderer/function/elements/information'
 import { backend } from '@renderer/runtime/backend'
+import { i18n } from '@renderer/main'
+import { useUIStore } from '@renderer/state/ui'
+import { useAuthStore } from '@renderer/state/auth'
+import { useContactStore } from '@renderer/state/contact'
+import { useChatStore } from '@renderer/state/chat'
+
+const uiStore = useUIStore()
+const authStore = useAuthStore()
+const contactStore = useContactStore()
+const chatStore = useChatStore()
+const settingsStore = useSettingsStore()
 import Emoji from '@renderer/function/model/emoji'
 import EmojiFace from './EmojiFace.vue'
 import LazyLottie from './LazyLottie.vue'
@@ -394,25 +406,33 @@ import { Img } from '@renderer/function/model/img'
 import { dbGetImage, hashUrl } from '@renderer/function/utils/localHistoryUtil'
 import JsonSegComp from './msg-component/JsonSegComp.vue'
 import XmlSegComp from './msg-component/XmlSegComp.vue'
+import { addMusic, MusicInfo } from './MusicPlayer.vue'
 
 type Msg = any
 type IUser = any
+
+defineOptions({ name: 'MsgBody' })
+
+const $t = i18n.global.t
 
 const {
     data,
     selected,
     type,
+    globalMe,
+    imageListHeader,
 } = defineProps<{
     data: any
     selected?: boolean
-    type?: string
+    type?: 'merge' | 'body'
+    globalMe?: string
     imageListHeader?: Img | undefined
 }>()
 
 provide('message-content', data)
 
-// 半 setup 半 旧的 api是这样的...旧的emit定义类型太麻烦了...
-// eslint-disable-next-line  @typescript-eslint/no-unused-vars
+const { viewer: viewerRef } = inject<{ viewer: any }>('viewer', { viewer: null })
+
 const emit = defineEmits<{
     scrollToMsg: [...args: any[]]
     imageLoaded: [...args: any[]]
@@ -436,16 +456,16 @@ const moveOptions: VMoveOptions<HTMLDivElement> = {
         target.style.transition = 'all 0.3'
     },
     leftLimit: {
-        value: runtimeData.inch * 0.75,
+        value: uiStore.inch * 0.75,
         type: 'px'
     },
     rightLimit: {
-        value: runtimeData.inch * 0.75,
+        value: uiStore.inch * 0.75,
         type: 'px'
     },
     moveCondition: {
         minMove: {
-            value: runtimeData.inch * 0.5,
+            value: uiStore.inch * 0.5,
             type: 'px'
         }
     }
@@ -453,804 +473,672 @@ const moveOptions: VMoveOptions<HTMLDivElement> = {
 
 //#endregion
 
+//#region == 响应式状态 ================================================================
+
+const View = ViewFuns
+const md = markdownit({ breaks: true })
+const isMe = ref(false)
+const isDev = import.meta.env.DEV
+const msgBodyClass = ref('message-body')
+const isDebugMsg = Option.get('debug_msg')
+const linkViewStyle = ref('')
+const pageViewInfo = ref(undefined as { [key: string]: any } | undefined)
+const gotLink = ref(false)
+const senderInfo = ref(null as any)
+const trueLang = getTrueLang()
+const textIndex = ref({} as { [key: string]: number })
+const resolvedImages = ref({} as Record<string, string>)
+
+//#endregion
+
 //#region == 工具函数 ================================================================
+
 function getAtMember(id: number): IUser | number {
     const re = getUserById(id) ?? id
     return re
 }
 function getUserById(id: number): IUser | undefined {
-    if (runtimeData.chatInfo.show.type === 'group') {
-        if (!runtimeData.chatInfo.info.group_members) return id
-        const user = runtimeData.chatInfo.info.group_members.find((item: IUser) => item.user_id == id)
+    if (chatStore.chatInfo.show.type === 'group') {
+        if (!chatStore.chatInfo.info.group_members) return id
+        const user = chatStore.chatInfo.info.group_members.find((item: IUser) => item.user_id == id)
         if (user) return user
         else return id
     }else {
-        const user = runtimeData.userList.find((item: IUser) => item.user_id === id)
+        const user = contactStore.userList.find((item: IUser) => item.user_id === id)
         if (user) return user
         else return id
     }
 }
+
 //#endregion
-</script>
-<script lang="ts">
-    export default defineComponent({
-        name: 'MsgBody',
-        inject: ['viewer'],
-        props: ['data', 'type', 'selected', 'imageListHeader'],
-        emits: ['scrollToMsg', 'imageLoaded', 'sendPoke'],
-        data() {
-            return {
-                Emoji,
-                backend,
-                md: markdownit({ breaks: true }),
-                isMe: false,
-                isDev: import.meta.env.DEV,
-                msgBodyClass: 'message-body',
-                isDebugMsg: Option.get('debug_msg'),
-                linkViewStyle: '',
-                View: ViewFuns,
-                runtimeData: runtimeData,
-                pageViewInfo: undefined as { [key: string]: any } | undefined,
-                gotLink: false,
-                getVideo: false,
-                senderInfo: null as any,
-                trueLang: getTrueLang(),
-                textIndex: {} as { [key: string]: number },
-                resolvedImages: {} as Record<string, string>,
-                // 互动相关
-                msgMove: {
-                    move: 0,
-                    onScroll: 'none' as 'none' | 'touch' | 'wheel',
-                    touchLast: null as null | TouchEvent,
-                },
+
+//#region == 方法函数 ================================================================
+
+async function loadCachedImages() {
+    const selfId = authStore.loginInfo?.uin
+    if (!selfId) return
+    for (const seg of data.message) {
+        if (seg.type !== 'image' || !seg.url) continue
+        const urlHash = await hashUrl(seg.url)
+        const cached = await dbGetImage(selfId, urlHash)
+        if (cached) {
+            resolvedImages.value[seg.url] =
+                `data:${cached.mimeType};base64,${cached.data}`
+        }
+    }
+}
+
+function getImgSrc(url: string): string {
+    return resolvedImages.value[url] ?? backend.proxyUrl(url)
+}
+
+function getAtClass(who: number | string) {
+    let back = 'msg-at'
+    if (isMe.value && type != 'merge') {
+        back += ' me'
+    }
+    if (authStore.loginInfo.uin == who || who == 'all') {
+        back += ' atme'
+    }
+    return back
+}
+
+function getAtName(item: { [key: string]: any }) {
+    if (item.qq == 'all') {
+        return '@' + $t('全体成员')
+    }
+    if (item.text != undefined) {
+        return item.text
+    } else {
+        for (let i = 0; i < chatStore.chatInfo.info.group_members.length; i++) {
+            const user = chatStore.chatInfo.info.group_members[i]
+            if (user.user_id == Number(item.qq)) {
+                return ('@' + (user.card != '' && user.card != null? user.card: user.nickname))
             }
-        },
-        mounted() {
-            // 初始化 isMe 参数
-            this.isMe =
-                Number(runtimeData.loginInfo.uin) ===
-                Number(this.data.sender.user_id)
-            // 补充发送者信息
-            this.$watch(
-                () => runtimeData.chatInfo.info.group_members.length,
-                () => {
-                    this.senderInfo =
-                        runtimeData.chatInfo.info.group_members.filter(
-                            (item: any) => {
-                                return item.user_id == this.data.sender.user_id
-                            },
-                        )[0]
-                },
-            )
-            this.senderInfo = runtimeData.chatInfo.info.group_members.filter(
-                (item: any) => {
-                    return item.user_id == this.data.sender.user_id
-                },
-            )[0]
-            // 处理 textIndex
-            for (let i = 0; i < this.data.message.length; i++) {
-                const item = this.data.message[i]
-                if(item.type == 'text') {
-                    this.parseText(i)
+        }
+        return '@' + item.qq
+    }
+}
+
+function scrollToMsg(id: string) {
+    emit('scrollToMsg', 'chat-' + id)
+}
+
+function imgStyle(length: number, at: number, isFace: boolean) {
+    let style = 'msg-img'
+    if (type == 'body') {
+        return style
+    }
+    if (isFace) {
+        style += ' face'
+    }
+    if (length === 1) {
+        return (style += ' alone')
+    }
+    if (at === 0) {
+        return (style += ' top')
+    }
+    if (at === length - 1) {
+        return (style += ' button')
+    }
+    return style
+}
+
+function imgClick(url: string) {
+    if (viewerRef?.value && imageListHeader) {
+        viewerRef.value.openBySrc(imageListHeader, url)
+    }
+}
+
+function preImgClick(img: string) {
+    if (viewerRef?.value) {
+        viewerRef.value.open(new Img(img))
+    }
+}
+
+async function imageLoaded(event: Event) {
+    const img = event.target as HTMLImageElement
+
+    if(backend.isMobile() && img.src && !img.src.startsWith('data:')
+        && img.dataset.type === 'image') {
+        img.src = await backend.proxyImageUrl(img.src)
+        return
+    }
+
+    const vh = document.documentElement.clientHeight || document.body.clientHeight
+    const imgHeight = img.naturalHeight || img.height
+    let imgWidth = img.naturalWidth || img.width
+
+    const aspectRatio = imgHeight / imgWidth
+
+    if (aspectRatio > 2.5) {
+        img.classList.add('long-img')
+        try {
+            const picLight = ( await getForegroundToneGridFromImageUrl(backend.proxyUrl(img.src), 0.4))[1][1] === 'light'
+            if(picLight) {
+                img.classList.add('light')
+            }
+        } catch {
+            // do nothing
+        }
+    } else {
+        if (imgHeight > vh * 0.35)
+            imgWidth = (imgWidth * (vh * 0.35)) / imgHeight
+    }
+
+    img.style.setProperty('--width', `${imgWidth}px`)
+    emit('imageLoaded', img.offsetHeight)
+}
+
+function imgLoadFail(event: Event) {
+    const sender = event.currentTarget as HTMLImageElement
+    const parent = sender.parentNode as HTMLDivElement
+    parent.style.display = 'flex'
+    parent.style.flexDirection = 'column'
+    parent.style.alignItems = 'center'
+    parent.style.padding = '20px 50px'
+    parent.style.border = '2px dashed var(--color-card-2)'
+    parent.style.borderRadius = '10px'
+    parent.style.margin = '10px 0'
+    parent.innerText = ''
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    svg.setAttribute('viewBox', '0 0 512 512')
+    svg.innerHTML =
+        '<path d="M119.4 44.1c23.3-3.9 46.8-1.9 68.6 5.3l49.8 77.5-75.4 75.4c-1.5 1.5-2.4 3.6-2.3 5.8s1 4.2 2.6 5.7l112 104c2.9 2.7 7.4 2.9 10.5 .3s3.8-7 1.7-10.4l-60.4-98.1 90.7-75.6c2.6-2.1 3.5-5.7 2.4-8.8L296.8 61.8c28.5-16.7 62.4-23.2 95.7-17.6C461.5 55.6 512 115.2 512 185.1v5.8c0 41.5-17.2 81.2-47.6 109.5L283.7 469.1c-7.5 7-17.4 10.9-27.7 10.9s-20.2-3.9-27.7-10.9L47.6 300.4C17.2 272.1 0 232.4 0 190.9v-5.8c0-69.9 50.5-129.5 119.4-141z"/>'
+    svg.style.width = '40px'
+    svg.style.opacity = '0.8'
+    svg.style.fill = 'var(--color-main)'
+    if (isMe.value) {
+        svg.style.fill = 'var(--color-font-r)'
+    }
+    parent.appendChild(svg)
+    const span = document.createElement('span')
+    span.innerText = $t('加载图片失败')
+    span.style.marginTop = '10px'
+    span.style.fontSize = '0.8rem'
+    span.style.color = 'var(--color-font-2)'
+    if (isMe.value) {
+        span.style.color = 'var(--color-font-1-r)'
+    }
+    parent.appendChild(span)
+    const a = document.createElement('a')
+    a.innerText = $t('预览图片')
+    a.target = '__blank'
+    a.href = sender.src
+    a.style.marginTop = '10px'
+    a.style.fontSize = '0.7rem'
+    a.style.color = 'var(--color-font-2)'
+    if (isMe.value) {
+        a.style.color = 'var(--color-font-1-r)'
+    }
+    parent.appendChild(a)
+}
+
+async function parseText(index: number) {
+
+    let text = data.message[index].text
+
+    const logger = new Logger()
+    text = ViewFuns.parseText(text)
+    const filtedText = text.replace(/(.)(\1{10,})/g, '$1<span style="opacity:0.7;margin-right:10px;">...</span>')
+    if(filtedText != text) {
+        const style = 'display:block;margin-top:10px;opacity:0.7;cursor:pointer;'
+        text = filtedText + '<a style="' + style +'" data-raw="' + text + '" onclick="this.parentNode.innerText = this.dataset.raw;return false;">' + $t('显示原始消息') + '</a>'
+    }
+
+    if(type == 'body') {
+        textIndex.value[index] = text
+        return
+    }
+
+    const reg = /(http|https):\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-.,@?^=%&:/~+#]*[\w\-@?^=%&/~+#])?/gi
+    text = text.replaceAll(reg, '<a href="" data-link="$&" onclick="return false">$&</a>')
+    const linkList = text.match(reg)
+    if (linkList !== null && !gotLink.value && !isDebugMsg) {
+        queueMicrotask(async() => {
+            gotLink.value = true
+            const fistLink = linkList[0]
+            let protocol = ''
+            let domain = ''
+            try {
+                protocol = new URL(fistLink).protocol + '//'
+                domain = new URL(fistLink).hostname
+            } catch (ignore) {
+                // ignore
+            }
+            sendStatEvent('link_view', { domain: domain })
+
+            let linkData = null as any
+            let finaLink = fistLink
+            try {
+                finaLink = await backend.call('Onebot', 'sys:getFinalRedirectUrl', true, fistLink)
+                if(!finaLink) {
+                    finaLink = fistLink
+                }
+            } catch(_) { /**/ }
+            const showLinkList = {
+                bilibili: ['bilibili.com', 'b23.tv', 'bili2233.cn', 'acg.tv'],
+                music163: ['music.163.com', '163cn.tv'],
+            }
+            for (const key in showLinkList) {
+                if (showLinkList[key].some((item: string) => finaLink.includes(item))) {
+                    linkData = await linkView[key](finaLink)
                 }
             }
-            // 本地 DB 消息：异步加载已缓存的图片
-            if (this.data._from_local_db) {
-                this.loadCachedImages()
-            }
-            // 初始化消息状态（msgBody class）
-            if(this.isMe && this.type != 'merge') {
-                this.msgBodyClass += ' me'
-            }
-            if(this.isSuperFaceMsg()) {
-                this.msgBodyClass += ' super-face'
-            }
-            if(runtimeData.sysConfig.opt_ind_message === true) {
-                this.msgBodyClass += ' right'
-            }
-        },
-        methods: {
-            /**
-             * 获取消息的纯文本（此方法可能会被遗弃）
-             * @param message 消息对象
-             */
-            getMsgRawTxt(message: any) {
-                return getMsgRawTxt(message)
-            },
-
-            /**
-             * 对本地 DB 消息，尝试从图片缓存中加载各图片段，填充 resolvedImages。
-             */
-            async loadCachedImages() {
-                const selfId = runtimeData.loginInfo?.uin
-                if (!selfId) return
-                for (const seg of this.data.message) {
-                    if (seg.type !== 'image' || !seg.url) continue
-                    const urlHash = await hashUrl(seg.url)
-                    const cached = await dbGetImage(selfId, urlHash)
-                    if (cached) {
-                        this.resolvedImages[seg.url] =
-                            `data:${cached.mimeType};base64,${cached.data}`
+            if(!linkData) {
+                if (!backend.isWeb()) {
+                    let html = await backend.call('Onebot', 'sys:getHtml', true, finaLink)
+                    if(html) {
+                        const headEnd = html.indexOf('</head>')
+                        html = html.slice(0, headEnd)
+                        const ogRegex = /<meta\s+property="og:([^"]+)"\s+content="([^"]+)"\s*\/?>/g
+                        const ogTags = {} as {[key: string]: string}
+                        let match: string[] | null
+                        while ((match = ogRegex.exec(html)) !== null) {
+                            ogTags[`og:${match[1]}`] = match[2]
+                        }
+                        linkData = ogTags
                     }
-                }
-            },
-
-            /**
-             * 获取图片的显示 src：本地 DB 消息优先使用缓存 data URL，否则走代理。
-             */
-            getImgSrc(url: string): string {
-                return this.resolvedImages[url] ?? backend.proxyUrl(url)
-            },
-
-            /**
-             * 根据消息状态获取 At 消息实际的 CSS class
-             * @param who
-             */
-            getAtClass(who: number | string) {
-                let back = 'msg-at'
-                if (this.isMe && this.type != 'merge') {
-                    back += ' me'
-                }
-                if (runtimeData.loginInfo.uin == who || who == 'all') {
-                    back += ' atme'
-                }
-                return back
-            },
-
-            /**
-             * 在 At 消息返回内容没有名字的时候尝试在群成员列表内寻找
-             * @param item
-             */
-            getAtName(item: { [key: string]: any }) {
-                if (item.qq == 'all') {
-                    return '@' + this.$t('全体成员')
-                }
-                if (item.text != undefined) {
-                    return item.text
                 } else {
-                    for (let i = 0; i < runtimeData.chatInfo.info.group_members.length; i++) {
-                        const user = runtimeData.chatInfo.info.group_members[i]
-                        if (user.user_id == Number(item.qq)) {
-                            return ('@' + (user.card != '' && user.card != null? user.card: user.nickname))
-                        }
-                    }
-                    return '@' + item.qq
-                }
-            },
-
-            /**
-             * 滚动到指定消息
-             * @param id 消息 id
-             */
-            scrollToMsg(id: string) {
-                this.$emit('scrollToMsg', 'chat-' + id)
-            },
-
-            /**
-             * 处理图片显示需要的样式，顺便添加图片列表
-             * @param length 消息段数
-             * @param at 图片在消息中的位置
-             */
-            imgStyle(length: number, at: number, isFace: boolean) {
-                let style = 'msg-img'
-                // 处理样式
-                if (isFace) {
-                    style += ' face'
-                }
-                if (length === 1) {
-                    return (style += ' alone')
-                }
-                if (at === 0) {
-                    return (style += ' top')
-                }
-                if (at === length - 1) {
-                    return (style += ' button')
-                }
-                return style
-            },
-
-            /**
-             * 图片点击
-             * @param msgId 消息 ID
-             */
-            imgClick(url: string) {
-                if (this.viewer && this.imageListHeader) {
-                    (this.viewer as any).openBySrc(this.imageListHeader, url)
-                }
-            },
-
-            /**
-             * 预览图片点击
-             */
-            preImgClick(img: string) {
-                if (this.viewer) {
-                    (this.viewer as any).open(new Img(img))
-                }
-            },
-
-            /**
-             * 图片加载完成，滚到底部
-             */
-            imageLoaded(event: Event) {
-                const img = event.target as HTMLImageElement
-                // 计算图片宽度
-                const vh = document.documentElement.clientHeight || document.body.clientHeight
-                const imgHeight = img.naturalHeight || img.height
-                let imgWidth = img.naturalWidth || img.width
-
-                // 计算长宽比，检测是否为长图
-                const aspectRatio = imgHeight / imgWidth
-
-                // 常见的手机里最大的可能一般是 20:9
-                // 避免截图被判为长图，这里设置为它
-                if (aspectRatio > 2.5) {
-                    img.classList.add('long-img')
-                } else {
-                    // 普通图片的处理逻辑保持不变
-                    if (imgHeight > vh * 0.35)
-                        imgWidth = (imgWidth * (vh * 0.35)) / imgHeight
-                }
-
-                img.style.setProperty('--width', `${imgWidth}px`)
-                this.$emit('imageLoaded', img.offsetHeight)
-            },
-
-            /**
-             * 图片加载失败
-             */
-            imgLoadFail(event: Event) {
-                const sender = event.currentTarget as HTMLImageElement
-                const parent = sender.parentNode as HTMLDivElement
-                parent.style.display = 'flex'
-                parent.style.flexDirection = 'column'
-                parent.style.alignItems = 'center'
-                parent.style.padding = '20px 50px'
-                parent.style.border = '2px dashed var(--color-card-2)'
-                parent.style.borderRadius = '10px'
-                parent.style.margin = '10px 0'
-                parent.innerText = ''
-                // 新建 svg
-                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-                svg.setAttribute('viewBox', '0 0 512 512')
-                svg.innerHTML =
-                    '<path d="M119.4 44.1c23.3-3.9 46.8-1.9 68.6 5.3l49.8 77.5-75.4 75.4c-1.5 1.5-2.4 3.6-2.3 5.8s1 4.2 2.6 5.7l112 104c2.9 2.7 7.4 2.9 10.5 .3s3.8-7 1.7-10.4l-60.4-98.1 90.7-75.6c2.6-2.1 3.5-5.7 2.4-8.8L296.8 61.8c28.5-16.7 62.4-23.2 95.7-17.6C461.5 55.6 512 115.2 512 185.1v5.8c0 41.5-17.2 81.2-47.6 109.5L283.7 469.1c-7.5 7-17.4 10.9-27.7 10.9s-20.2-3.9-27.7-10.9L47.6 300.4C17.2 272.1 0 232.4 0 190.9v-5.8c0-69.9 50.5-129.5 119.4-141z"/>'
-                svg.style.width = '40px'
-                svg.style.opacity = '0.8'
-                svg.style.fill = 'var(--color-main)'
-                if (this.isMe) {
-                    svg.style.fill = 'var(--color-font-r)'
-                }
-                parent.appendChild(svg)
-                // 新建 span
-                const span = document.createElement('span')
-                span.innerText = this.$t('加载图片失败')
-                span.style.marginTop = '10px'
-                span.style.fontSize = '0.8rem'
-                span.style.color = 'var(--color-font-2)'
-                if (this.isMe) {
-                    span.style.color = 'var(--color-font-1-r)'
-                }
-                parent.appendChild(span)
-                // 链接
-                const a = document.createElement('a')
-                a.innerText = this.$t('预览图片')
-                a.target = '__blank'
-                a.href = sender.src
-                a.style.marginTop = '10px'
-                a.style.fontSize = '0.7rem'
-                a.style.color = 'var(--color-font-2)'
-                if (this.isMe) {
-                    a.style.color = 'var(--color-font-1-r)'
-                }
-                parent.appendChild(a)
-            },
-
-            /**
-             * 处理纯文本消息和链接预览
-             * @param text 纯文本消息
-             */
-            async parseText(index: number) {
-                let text = this.data.message[index].text
-
-                const logger = new Logger()
-                text = ViewFuns.parseText(text)
-                // 防止大量的重复字符
-                const filtedText = text.replace(/(.)(\1{10,})/g, '$1<span style="opacity:0.7;margin-right:10px;">...</span>')
-                if(filtedText != text) {
-                    const style = 'display:block;margin-top:10px;opacity:0.7;cursor:pointer;'
-                    text = filtedText + '<a style="' + style +'" data-raw="' + text + '" onclick="this.parentNode.innerText = this.dataset.raw;return false;">' + this.$t('显示原始消息') + '</a>'
-                }
-                // 链接判定
-                const reg = /(http|https):\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-.,@?^=%&:/~+#]*[\w\-@?^=%&/~+#])?/gi
-                text = text.replaceAll(reg, '<a href="" data-link="$&" onclick="return false">$&</a>')
-                const linkList = text.match(reg)
-                if (linkList !== null && !this.gotLink && !this.isDebugMsg) {
-                    queueMicrotask(async() => {
-                        this.gotLink = true
-                        const fistLink = linkList[0]
-                        let protocol = ''
-                        let domain = ''
-                        try {
-                            protocol = new URL(fistLink).protocol + '//'
-                            domain = new URL(fistLink).hostname
-                        } catch (ignore) {
-                            // ignore
-                        }
-                        sendStatEvent('link_view', { domain: domain })
-
-                        let data = null as any
-                        let finaLink = fistLink
-                        try {
-                            finaLink = await backend.call('Onebot', 'sys:getFinalRedirectUrl', true, fistLink)
-                            if(!finaLink) {
-                                finaLink = fistLink
-                            }
-                        } catch(_) { /**/ }
-                        const showLinkList = {
-                            bilibili: ['bilibili.com', 'b23.tv', 'bili2233.cn', 'acg.tv'],
-                            music163: ['music.163.com', '163cn.tv'],
-                        }
-                        for (const key in showLinkList) {
-                            if (showLinkList[key].some((item: string) => finaLink.includes(item))) {
-                                data = await linkView[key](finaLink)
-                            }
-                        }
-                        // 通用 og 解析
-                        if(!data) {
-                            if (!backend.isWeb()) {
-                                let html = await backend.call('Onebot', 'sys:getHtml', true, finaLink)
-                                if(html) {
-                                    const headEnd = html.indexOf('</head>')
-                                    html = html.slice(0, headEnd)
-                                    // 获取所有的 og meta 标签
-                                    const ogRegex = /<meta\s+property="og:([^"]+)"\s+content="([^"]+)"\s*\/?>/g
-                                    const ogTags = {} as {[key: string]: string}
-                                    let match: string[] | null
-                                    while ((match = ogRegex.exec(html)) !== null) {
-                                        ogTags[`og:${match[1]}`] = match[2]
-                                    }
-                                    data = ogTags
-                                }
-                            } else {
-                                // 获取链接预览
-                                const response = await fetch(`${import.meta.env.VITE_APP_LINK_VIEW}/${encodeURIComponent(fistLink)}`)
-                                if(response.ok) {
-                                    const res = await response.json()
-                                    if (res.status === undefined && Object.keys(res).length > 0) {
-                                        data = res
-                                    }
-                                }
-                            }
-                        }
-
-                        logger.add(LogType.DEBUG, 'Link View: ', data)
-                        if(data) {
-                            this.loadLinkPreview(protocol + domain, data)
-                        }
-                    })
-                }
-                this.textIndex[index] = text
-            },
-
-            loadLinkPreview(domain: string, res: any) {
-                const logger = new Logger()
-                logger.debug('获取链接预览成功: ' + res['og:title'])
-                if(res != undefined) {
-                    if (res.type == undefined) {
-                        if(Object.keys(res).length > 0) {
-                            let imgUrl = res['og:image']
-                            if (imgUrl && !imgUrl.startsWith('http') && !imgUrl.startsWith('www')) {
-                                imgUrl = new URL(imgUrl.startsWith('/') ? imgUrl : '/' + imgUrl, domain).toString()
-                            }
-                            const pageData = {
-                                site: res['og:site_name'] === undefined ? '' : res['og:site_name'],
-                                title: res['og:title'] === undefined ? '' : res['og:title'],
-                                desc: res['og:description'] === undefined ? '' : res['og:description'],
-                                img: imgUrl,
-                                link: res['og:url'],
-                            }
-                            this.pageViewInfo = pageData
-                        }
-                    } else {
-                        this.pageViewInfo = res
-                    }
-                }
-            },
-
-            /**
-             * 对链接预览的图片长宽进行判定以确定显示样式
-             */
-            linkViewPicFin() {
-                const img = document.getElementById(
-                    this.data.message_id + '-linkview-img',
-                ) as HTMLImageElement
-                if (img !== null) {
-                    const w = img.naturalWidth
-                    const h = img.naturalHeight
-                    if (w > h) {
-                        this.linkViewStyle = 'large'
-                    }
-                }
-            },
-            linkViewPicErr() {
-                if(this.pageViewInfo)
-                    this.pageViewInfo.img = undefined
-            },
-
-            /**
-             * 隐藏 At 信息面板
-             */
-            hiddenUserInfo() {
-                if (runtimeData.chatInfo.info.now_member_info !== undefined) {
-                    runtimeData.chatInfo.info.now_member_info = undefined
-                }
-            },
-
-            /**
-             * 尝试在消息列表中寻找这条被回复的消息，获取消息内容
-             * @param message_id
-             */
-            getRepMsg(message_id: string) {
-                const list = this.runtimeData.messageList.filter((item) => {
-                    return item.message_id == message_id
-                })
-                if (list.length === 1) {
-                    if (list[0].message.length > 0)
-                        return ( list[0].sender.nickname + ': ' + getMsgRawTxt(list[0]))
-                    else return this.$t('（获取回复消息失败）')
-                }
-                return null
-            },
-
-            /**
-             * 下载消息中的文件
-             * @param data 消息对象
-             */
-            downloadFile(data: any, message_id: string) {
-                // 获取下载链接
-                let name = runtimeData.jsonMap.file_download?.private_name
-                if(runtimeData.chatInfo.show.type == 'group') {
-                    name = runtimeData.jsonMap.file_download?.name
-                }
-                Connector.send(name, {
-                    file_id: data.file_id,
-                    group_id: runtimeData.chatInfo.show.type == 'group' ? runtimeData.chatInfo.show.id : undefined,
-                },
-                    'downloadFile_' + message_id + '_' + btoa(encodeURIComponent(data.name ?? data.file_name)),
-                )
-            },
-
-            /**
-             * 文本消息被点击
-             * @param event 事件
-             */
-            textClick(event: Event) {
-                const target = event.target as HTMLElement
-                if (target.dataset.link) {
-                    // 点击了链接
-                    const link = target.dataset.link
-                    openLink(link)
-                }
-            },
-
-            /**
-             * 对部分文件类型进行预览处理
-             * @param name 文件名
-             */
-            loadFileBase(
-                data: any,
-                name: string,
-                message_id: StringifyOptions,
-            ) {
-                const ext = name.split('.').pop()
-                // 寻找消息
-                const msg = runtimeData.messageList.find(
-                    (item) => item.message_id === message_id,
-                )
-                if (ext && msg?.fileView == undefined) {
-                    // 图片、视频和文本文件获取文件链接
-                    const list = [
-                        'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp',
-                        'mp4', 'avi', 'mkv', 'flv',
-                        'txt', 'md',
-                    ]
-                    if (list.includes(ext)) {
-                        msg.fileView = {}
-                        // 获取下载链接
-                        let name = runtimeData.jsonMap.file_download?.private_name
-                        if(runtimeData.chatInfo.show.type == 'group') {
-                            name = runtimeData.jsonMap.file_download?.name
-                        }
-                        if(name) {
-                            Connector.send(name, {
-                                file_id: data.file_id,
-                                group_id: runtimeData.chatInfo.show.type == 'group' ? runtimeData.chatInfo.show.id : undefined,
-                            },
-                                'loadFileBase_' + this.data.message_id + '_' + ext,
-                            )
+                    const response = await fetch(`${import.meta.env.VITE_APP_LINK_VIEW}/${encodeURIComponent(fistLink)}`)
+                    if(response.ok) {
+                        const res = await response.json()
+                        if (res.status === undefined && Object.keys(res).length > 0) {
+                            linkData = res
                         }
                     }
                 }
-                return name
-            },
+            }
 
-            /**
-             * 下载 txt 文件并获取文件内容
-             * @param url 链接
-             */
-            getTxtUrl(view: any) {
-                const url = view.url
-                // 保存文件为 Blob
-                fetch(url)
-                    .then((r) => r.blob())
-                    .then((blob) => {
-                        // 读取文件内容并返回文本
-                        const reader = new FileReader()
-                        reader.readAsText(blob, 'utf-8')
-                        reader.onload = function () {
-                            // 只取前 300 字，超出部分加上 ……
-                            const txt = reader.result as string
-                            view.txt = txt.length > 300? txt.slice(0, 300) + '…': txt
-                        }
-                    })
-            },
+            logger.add(LogType.DEBUG, 'Link View: ', linkData)
+            if(linkData) {
+                loadLinkPreview(protocol + domain, linkData)
+            }
+        })
+    }
+    textIndex.value[index] = text
+}
 
-            hasCard() {
-                let hasCard = false
-                this.data.message.forEach((item: any) => {
-                    if (item.type === 'json' || item.type === 'xml') {
-                        hasCard = true
-                    }
-                })
-                return hasCard
-            },
-
-            hasMarkdown() {
-                let hasMarkdown = false
-                this.data.message.forEach((item: any) => {
-                    if (item.type === 'markdown') {
-                        hasMarkdown = true
-                    }
-                })
-                return hasMarkdown
-            },
-
-            sendPoke() {
-                // 调用上级组件的 poke 方法
-                this.$emit('sendPoke', this.data.sender.user_id)
-            },
-
-            async showPock() {
-                // 如果是最后一条消息并且在最近发送
-                if (this.data.message_id ==
-                    runtimeData.messageList[runtimeData.messageList.length - 1].message_id &&
-                    (new Date().getTime() - getViewTime(this.data.time)) / 1000 < 5) {
-                    let windowInfo = null as {
-                        x: number
-                        y: number
-                        width: number
-                        height: number
-                    } | null
-                    if (backend.isDesktop()) {
-                        windowInfo = await backend.call('Onebot', 'win:getWindowInfo', true)
-                    }
-                    const message = document.getElementById('chat-' + this.data.message_id)
-                    let item = document.getElementById('app')
-                    if (backend.isDesktop()) {
-                        item = message?.getElementsByClassName('poke-hand')[0] as HTMLImageElement
-                    }
-                    this.$nextTick(() => {
-                        pokeAnime(item, windowInfo)
-                    })
+function loadLinkPreview(domain: string, res: any) {
+    const logger = new Logger()
+    logger.debug('获取链接预览成功: ' + res['og:title'])
+    if(res != undefined) {
+        if (res.type == undefined) {
+            if(Object.keys(res).length > 0) {
+                let imgUrl = res['og:image']
+                if (imgUrl && !imgUrl.startsWith('http') && !imgUrl.startsWith('www')) {
+                    imgUrl = new URL(imgUrl.startsWith('/') ? imgUrl : '/' + imgUrl, domain).toString()
                 }
-            },
-
-            isSuperFaceMsg() {
-                if (runtimeData.sysConfig.use_super_face === false) return false
-                if (this.data.message.length !== 1) return false
-                const seg = this.data.message.at(0)
-                if (seg.type !== 'face') return
-                return Emoji.allSuperList.has(Number(seg.id))
-            },
-
-            getMdHTML(str: string, id: string) {
-                const html = this.md.render(str)
-                const div = document.createElement('div')
-                div.innerHTML = html
-                // 二次处理 img；img 拥有这样的 alt：cornerRadius=100 #48px #48px
-                const imgs = div.getElementsByTagName('img')
-                for(let i=0; i<imgs.length; i++) {
-                    const img = imgs[i]
-                    const alt = img.getAttribute('alt')
-                    if(alt) {
-                        const size = alt.split('#')
-                        if(size.length == 3) {
-                            img.style.width = size[1]
-                            img.style.height = size[2]
-                        }
-                    }
+                const pageData = {
+                    site: res['og:site_name'] === undefined ? '' : res['og:site_name'],
+                    title: res['og:title'] === undefined ? '' : res['og:title'],
+                    desc: res['og:description'] === undefined ? '' : res['og:description'],
+                    img: imgUrl,
+                    link: res['og:url'],
                 }
-                // 二次处理 a；去除 href
-                const links = div.getElementsByTagName('a')
-                for(let i=0; i<links.length; i++) {
-                    const link = links[i]
-                    const href = link.getAttribute('href')
-                    if(href) {
-                        link.setAttribute('data-link', href)
-                        link.setAttribute('href', '')
-                        link.onclick = (e) => {
-                            e.preventDefault()
-                            openLink(href)
-                        }
-                    }
-                }
+                pageViewInfo.value = pageData
+            }
+        } else {
+            pageViewInfo.value = res
+        }
+    }
+}
 
-                const body = document.getElementById(id)
-                if(body) {
-                    body.innerHTML = ''
-                    body.appendChild(div)
-                }
+function linkViewPicFin() {
+    const img = document.getElementById(
+        data.message_id + '-linkview-img',
+    ) as HTMLImageElement
+    if (img !== null) {
+        const w = img.naturalWidth
+        const h = img.naturalHeight
+        if (w > h) {
+            linkViewStyle.value = 'large'
+        }
+    }
+}
+function linkViewPicErr() {
+    if(pageViewInfo.value)
+        pageViewInfo.value.img = undefined
+}
 
-                return id
-            },
+function hiddenUserInfo() {
+    if (chatStore.chatInfo.info.now_member_info !== undefined) {
+        chatStore.chatInfo.info.now_member_info = undefined
+    }
+}
 
-            audioLoaded() {
-                const mainBody = document.getElementById('music163-audio-' + this.data.message_id)
-                if(mainBody) {
-                    const bar = mainBody.getElementsByTagName('input')[0]
-                    const audio = mainBody.getElementsByTagName('audio')[0]
-                    const span = mainBody.getElementsByTagName('div')[0].getElementsByTagName('span')[0]
-                    const div = mainBody.getElementsByTagName('div')[0].getElementsByTagName('div')[0].children[1] as HTMLDivElement
-                    if(bar && audio && span && div) {
-                        const max = this.pageViewInfo?.data.info.time ?? audio.duration
-                        bar.max = max.toString()
-                        // 设置进度文本
-                        const minutes = Math.floor(max / 60)
-                        const seconds = Math.floor(max % 60)
-                        span.innerHTML = '00:00 / ' +
-                            (minutes < 10 ? '0' + minutes : minutes) + ':' +
-                            (seconds < 10 ? '0' + seconds : seconds)
-                        // 设置不可播放长度
-                        if(max > audio.duration) {
-                            const percent = audio.duration / max
-                            if(percent > 0) {
-                                div.style.width = 'calc(' + (1 - percent) * 100 + '% - 9px)'
-                                div.style.marginLeft = 'calc(' + percent * 100 + '% + 9px)'
-                            } else {
-                                div.style.width = '0%'
-                            }
-                        }
-                    }
-                }
-                if(this.pageViewInfo) this.pageViewInfo.data.loaded = true
-            },
-
-            audioControll() {
-                const mainBody = document.getElementById('music163-audio-' + this.data.message_id)
-                if(mainBody) {
-                    const audio = mainBody.getElementsByTagName('audio')[0]
-                    if(audio) {
-                        if(audio.paused) {
-                            audio.play()
-                            if(this.pageViewInfo) this.pageViewInfo.data.play = true
-                        } else {
-                            audio.pause()
-                            if(this.pageViewInfo) this.pageViewInfo.data.play = false
-                        }
-                    }
-                }
-            },
-
-            audioUpdate() {
-                const mainBody = document.getElementById('music163-audio-' + this.data.message_id)
-                if(mainBody) {
-                    const bar = mainBody.getElementsByTagName('input')[0]
-                    const audio = mainBody.getElementsByTagName('audio')[0]
-                    const span = mainBody.getElementsByTagName('div')[0].getElementsByTagName('span')[0]
-                    const div = mainBody.getElementsByTagName('div')[0].getElementsByTagName('div')[0].children[0] as HTMLDivElement
-                    if(bar && audio && span && div) {
-                        const max = this.pageViewInfo?.data.info.time ?? audio.duration
-                        bar.value = audio.currentTime.toString()
-                        // 设置进度文本
-                        const minutes = Math.floor(audio.currentTime / 60)
-                        const seconds = Math.floor(audio.currentTime % 60)
-                        const minutesDur = Math.floor(max / 60)
-                        const secondsDur = Math.floor(max % 60)
-
-                        span.innerHTML = (minutes < 10 ? '0' + minutes : minutes) + ':' +
-                            (seconds < 10 ? '0' + seconds : seconds) + ' / ' +
-                            (minutesDur < 10 ? '0' + minutesDur : minutesDur) + ':' +
-                            (secondsDur < 10 ? '0' + secondsDur : secondsDur)
-
-                        const perCent = (audio.currentTime / max) * 100
-                        if(perCent > 100) {
-                            div.style.width = '100%'
-                        } else {
-                            div.style.width = perCent + '%'
-                        }
-
-                        if(audio.currentTime >= audio.duration) {
-                            bar.value = '0'
-                            audio.currentTime = 0
-                            if(this.pageViewInfo) this.pageViewInfo.data.play = false
-                            div.style.width = '0%'
-                        }
-                    }
-                }
-            },
-
-            audioChange() {
-                const mainBody = document.getElementById('music163-audio-' + this.data.message_id)
-                if(mainBody) {
-                    const bar = mainBody.getElementsByTagName('input')[0]
-                    const audio = mainBody.getElementsByTagName('audio')[0]
-                    if(bar && audio) {
-                        const value = parseFloat(bar.value)
-                        if(value <= audio.duration) {
-                            if(audio.paused) {
-                                audio.currentTime = value
-                            } else {
-                                audio.pause()
-                                audio.currentTime = value
-                                audio.play()
-                            }
-                        } else {
-                            bar.value = audio.currentTime.toString()
-                        }
-                    }
-                }
-            },
-            openMerge(){
-                const seg = this.data.message[0]
-                if (!seg.content) {
-                    new PopInfo().add(PopType.ERR, this.$t('合并转发解析失败'))
-                    return
-                }
-
-                const data: MergeStackData = {
-                    messageList: [],
-                    imageList: [],
-                    placeCache: 0,
-                    forwardMsg: this.data
-                }
-
-                data.messageList = seg.content
-                // 提取合并转发中的消息图片列表
-                const imgList = [] as {
-                    index: number
-                    message_id: string
-                    img_url: string
-                }[]
-                let index = 0
-                data.messageList.forEach((item) => {
-                    item.message.forEach((msg) => {
-                        if (msg.type == 'image') {
-                            imgList.push({
-                                index: index,
-                                message_id: item.message_id,
-                                img_url: msg.url,
-                            })
-                            index++
-                        }
-                    })
-                })
-                data.imageList = imgList
-
-                runtimeData.mergeMsgStack.push(data)
-            },
-            isFace(item: any) {
-                if (item.asface) return true
-                // 这是神马鬼玩意？一个驼峰，一个下划线，真是一个协议段一个协议啊
-                // QQ 一个动画表情怎么这么多种类型啊，服了
-                else if (item.subType == 7) return true
-                else if (item.subType == 1) return true
-                else if (item.sub_type == 7) return true
-                else if (item.sub_type == 1) return true
-                return false
-            },
-            //#endregion
-        },
+function getMsgInfo(message_id: string) {
+    const list = chatStore.messageList.filter((item) => {
+        return item.message_id == message_id
     })
+    if (list.length === 1 && list[0].message.length > 0) {
+        const time = Intl.DateTimeFormat(trueLang,
+                getTimeConfig(new Date(getViewTime(list[0].time))))
+            .format(getViewTime(getViewTime(list[0].time)))
+        return (list[0].sender.nickname + ' ' + time)
+    }
+    else return ''
+
+}
+
+function getMsgStr(message_id: string) {
+    const list = chatStore.messageList.filter((item) => {
+        return item.message_id == message_id
+    })
+    if (list.length === 1) {
+        return getMsgRawTxt(list[0])
+    }
+    return ''
+}
+
+function getMsg(message_id: string, filter: boolean = false) {
+    const list = chatStore.messageList.filter((item) => {
+        return item.message_id == message_id
+    })
+    if (list.length === 1) {
+        const msg = toRaw(list[0])
+        const textFallbackTypes = new Set([
+            'video',
+            'record',
+            'file',
+            'json',
+            'xml',
+        ])
+        const needTextFallback = (msg.message ?? []).some((seg: any) => textFallbackTypes.has(seg?.type))
+        if (needTextFallback) {
+            return filter ? null : false
+        }
+        if(filter) {
+            const mediaTypes = new Set([
+                'image',
+                'mface',
+                'forward',
+            ])
+            let hasMedia = false
+            const message = (msg.message ?? []).filter((seg: any) => {
+                if (!mediaTypes.has(seg?.type)) {
+                    return true
+                }
+                if (hasMedia) {
+                    return false
+                }
+                hasMedia = true
+                return true
+            })
+            return {
+                ...msg,
+                message,
+            }
+        } else {
+            return list[0]
+        }
+    }
+    return null
+}
+
+function downloadFile(fileData: any, message_id: string) {
+    let name = authStore.jsonMap.file_download?.private_name
+    if(chatStore.chatInfo.show.type == 'group') {
+        name = authStore.jsonMap.file_download?.name
+    }
+    Connector.send(name, {
+        file_id: fileData.file_id,
+        group_id: chatStore.chatInfo.show.type == 'group' ? chatStore.chatInfo.show.id : undefined,
+    },
+        'downloadFile_' + message_id + '_' + btoa(encodeURIComponent(fileData.name ?? fileData.file_name)),
+    )
+}
+
+function textClick(event: Event) {
+    const target = event.target as HTMLElement
+    if (target.dataset.link) {
+        const link = target.dataset.link
+        openLink(link)
+    }
+}
+
+function loadFileBase(
+    fileData: any,
+    name: string,
+    message_id: StringifyOptions,
+) {
+    const ext = name.split('.').pop()
+    const msg = chatStore.messageList.find(
+        (item) => item.message_id === message_id,
+    )
+    if (ext && msg?.fileView == undefined) {
+        const list = [
+            'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp',
+            'mp4', 'avi', 'mkv', 'flv',
+            'txt', 'md',
+        ]
+        if (list.includes(ext)) {
+            msg.fileView = {}
+            let dlName = authStore.jsonMap.file_download?.private_name
+            if(chatStore.chatInfo.show.type == 'group') {
+                dlName = authStore.jsonMap.file_download?.name
+            }
+            if(dlName) {
+                Connector.send(dlName, {
+                    file_id: fileData.file_id,
+                    group_id: chatStore.chatInfo.show.type == 'group' ? chatStore.chatInfo.show.id : undefined,
+                },
+                    'loadFileBase_' + data.message_id + '_' + ext,
+                )
+            }
+        }
+    }
+    return name
+}
+
+function getTxtUrl(view: any) {
+    const url = view.url
+    fetch(url)
+        .then((r) => r.blob())
+        .then((blob) => {
+            const reader = new FileReader()
+            reader.readAsText(blob, 'utf-8')
+            reader.onload = function () {
+                const txt = reader.result as string
+                view.txt = txt.length > 300? txt.slice(0, 300) + '…': txt
+            }
+        })
+}
+
+function hasCard() {
+    let hasCard = false
+    data.message.forEach((item: any) => {
+        if (item.type === 'json' || item.type === 'xml') {
+            hasCard = true
+        }
+    })
+    return hasCard
+}
+
+function hasMarkdown() {
+    let hasMarkdown = false
+    data.message.forEach((item: any) => {
+        if (item.type === 'markdown') {
+            hasMarkdown = true
+        }
+    })
+    return hasMarkdown
+}
+
+function sendPoke() {
+    emit('sendPoke', data.sender.user_id)
+}
+
+async function showPock() {
+    if (data.message_id ==
+        chatStore.messageList[chatStore.messageList.length - 1].message_id &&
+        (new Date().getTime() - getViewTime(data.time)) / 1000 < 5) {
+        let windowInfo = null as {
+            x: number
+            y: number
+            width: number
+            height: number
+        } | null
+        if (backend.isDesktop()) {
+            windowInfo = await backend.call('Onebot', 'win:getWindowInfo', true)
+        }
+        const message = document.getElementById('chat-' + data.message_id)
+        let item = document.getElementById('app')
+        if (backend.isDesktop()) {
+            item = message?.getElementsByClassName('poke-hand')[0] as HTMLImageElement
+        }
+        nextTick(() => {
+            pokeAnime(item, windowInfo)
+        })
+    }
+}
+
+function isSuperFaceMsg() {
+    if (settingsStore.sysConfig.use_super_face === false) return false
+    if (data.message.length !== 1) return false
+    const seg = data.message.at(0)
+    if (seg.type !== 'face') return
+    return Emoji.allSuperList.has(Number(seg.id))
+}
+
+function getMdHTML(str: string, id: string) {
+    const html = md.render(str)
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const imgs = div.getElementsByTagName('img')
+    for(let i=0; i<imgs.length; i++) {
+        const img = imgs[i]
+        const alt = img.getAttribute('alt')
+        if(alt) {
+            const size = alt.split('#')
+            if(size.length == 3) {
+                img.style.width = size[1]
+                img.style.height = size[2]
+            }
+        }
+    }
+    const links = div.getElementsByTagName('a')
+    for(let i=0; i<links.length; i++) {
+        const link = links[i]
+        const href = link.getAttribute('href')
+        if(href) {
+            link.setAttribute('data-link', href)
+            link.setAttribute('href', '')
+            link.onclick = (e) => {
+                e.preventDefault()
+                openLink(href)
+            }
+        }
+    }
+
+    const body = document.getElementById(id)
+    if(body) {
+        body.innerHTML = ''
+        body.appendChild(div)
+    }
+
+    return id
+}
+
+function sendPlay(info: MusicInfo) {
+    addMusic(info, 'current', true)
+}
+
+function openMerge(){
+    const seg = data.message[0]
+    if (!seg.content) {
+        new PopInfo().add(PopType.ERR, $t('合并转发解析失败'))
+        return
+    }
+
+    const mergeData: MergeStackData = {
+        messageList: [],
+        imageList: [],
+        placeCache: 0,
+        forwardMsg: data
+    }
+
+    mergeData.messageList = seg.content
+    const imgList = [] as {
+        index: number
+        message_id: string
+        img_url: string
+    }[]
+    let index = 0
+    mergeData.messageList.forEach((item) => {
+        item.message.forEach((msg) => {
+            if (msg.type == 'image') {
+                imgList.push({
+                    index: index,
+                    message_id: item.message_id,
+                    img_url: msg.url,
+                })
+                index++
+            }
+        })
+    })
+    mergeData.imageList = imgList
+
+    chatStore.mergeMsgStack.push(mergeData)
+}
+
+function isFace(item: any) {
+    if (item.asface) return true
+    else if (item.subType == 7) return true
+    else if (item.subType == 1) return true
+    else if (item.sub_type == 7) return true
+    else if (item.sub_type == 1) return true
+    return false
+}
+
+//#endregion
+
+//#region == 生命周期 ================================================================
+
+onMounted(() => {
+    isMe.value =
+        Number(authStore.loginInfo.uin) ===
+        Number(data.sender.user_id)
+    if(globalMe) {
+        isMe.value = globalMe == 'Y'
+    }
+    watch(
+        () => chatStore.chatInfo.info.group_members.length,
+        () => {
+            senderInfo.value =
+                chatStore.chatInfo.info.group_members.filter(
+                    (item: any) => {
+                        return item.user_id == data.sender.user_id
+                    },
+                )[0]
+        },
+    )
+    senderInfo.value = chatStore.chatInfo.info.group_members.filter(
+        (item: any) => {
+            return item.user_id == data.sender.user_id
+        },
+    )[0]
+    for (let i = 0; i < data.message.length; i++) {
+        const item = data.message[i]
+        if(item.type == 'text') {
+            parseText(i)
+        }
+    }
+    if (data._from_local_db) {
+        loadCachedImages()
+    }
+    if(isMe.value && type != 'merge') {
+        msgBodyClass.value += ' me'
+    }
+    if(isSuperFaceMsg()) {
+        msgBodyClass.value += ' super-face'
+    }
+    if(settingsStore.sysConfig.opt_ind_message === true) {
+        msgBodyClass.value += ' right'
+    }
+})
+
+//#endregion
 </script>
 <style>
     .dev-local-tag {
@@ -1366,103 +1254,40 @@ function getUserById(id: number): IUser | undefined {
     }
 
     .link-view-music163 {
+        width: calc(100% + 60px);
+        margin-right: -60px;
+        display: flex;
+    }
+    .link-view-music163 div {
+        display: flex;
         flex-direction: column;
-        display: flex;
+        flex: 1;
     }
-    .link-view-music163 > div:first-child {
-        align-items: flex-start;
-        display: flex;
-    }
-    .link-view-music163 > div:first-child > img {
+    .link-view-music163 img {
+        width: 60px;
+        height: 60px;
         border-radius: 7px;
-        margin-right: 20px;
-        max-height: 80px;
-        width: 25%;
+        margin-left: 20px;
     }
-    .link-view-music163 > div:first-child > div {
-        flex-direction: column;
-        display: flex;
-        width: 100%;
-    }
-    .link-view-music163 > div:first-child > div > a {
-        font-size: 0.9rem;
+    .link-view-music163 a {
+        text-wrap: nowrap;
         font-weight: bold;
+        margin: 0;
     }
-    .link-view-music163 > div:first-child > div > a > a {
-        font-size: 0.7rem;
-        font-weight: normal;
-    }
-    .link-view-music163 > div:first-child > div > span {
+    .link-view-music163 span {
+        text-wrap: nowrap;
         font-size: 0.8rem;
         opacity: 0.7;
     }
-    .link-view-music163 > div:first-child > div > div {
-        flex-direction: row;
-        margin-top: 5px;
-        flex-wrap: wrap;
-        display: flex;
+    .link-view-music163 svg {
+        --size: 20px;
+        color: #545454;
+        width: var(--size);
+        height: var(--size);
+        padding: calc(calc(60px - var(--size)) / 2);
+        transform: translateX(-100%);
     }
-    .link-view-music163 > div:first-child > div > div > input {
-        appearance: none;
-        -webkit-appearance: none;
-        width: calc(100% - 20px);
-        background: transparent;
-        margin-bottom: 10px;
-        margin-right: 20px;
-    }
-    .link-view-music163 > div:first-child > div > div > input::-webkit-slider-thumb {
-        background: var(--color-main);
-        -webkit-appearance: none;
-        border-radius: 100%;
-        margin-top: -3px;
-        height: 12px;
-        width: 12px;
-    }
-    .link-view-music163 > div:first-child > div.me > div > input::-webkit-slider-thumb {
-        background: var(--color-font-r);
-    }
-    .link-view-music163 > div:first-child > div > div > input::-webkit-slider-runnable-track {
-        background: var(--color-card-1);
-        border-radius: 10px;
-        height: 6px;
-    }
-    .link-view-music163 > div:first-child > div.me > div > input::-webkit-slider-runnable-track {
-        background: var(--color-font-2);
-    }
-    .link-view-music163 > div:first-child > div > div > svg {
-        font-size: 0.75rem;
-        margin-left: 4px;
-        cursor: pointer;
-    }
-    .link-view-music163 > div:first-child > div > div > span {
-        font-size: 0.75rem;
-        margin-right: 20px;
-        text-align: right;
-        flex: 1;
-    }
-    .link-view-music163 > div:first-child > div > div > div {
-        width: calc(100% - 20px);
-        margin-bottom: -6px;
-        margin-right: 20px;
-        margin-left: 3px;
-    }
-    .link-view-music163 > div:first-child > div > div > div > div {
-        transform: translateY(calc(-100% - 10px));
-        background: var(--color-main);
-        pointer-events: none;
-        border-radius: 6px;
-        height: 6px;
-        width: 0%;
-    }
-    .link-view-music163 > div:first-child > div > div > div > div:nth-child(2) {
-        transform: translateY(calc(-100% - 16px));
-        background: var(--color-card-2);
-        border-radius: 0 6px 6px 0;
-    }
-    .link-view-music163 > div:first-child > div.me > div > div > div:nth-child(2) {
-        background: var(--color-font-1);
-    }
-    .link-view-music163 > div:first-child > div.me > div > div > div {
-        background: var(--color-font-r);
+    .link-view-music163 svg.light {
+        color: #e5e5e5;
     }
 </style>

@@ -23,8 +23,8 @@
 <script setup lang="ts">
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { Logger } from '@renderer/function/base';
-import { runtimeData } from '@renderer/function/msg';
 import { sendMsgRaw } from '@renderer/function/utils/msgUtil'
+import { useChatStore } from '@renderer/state/chat'
 import * as z from 'zod'
 
 const { data: jsonData, id } = defineProps<{
@@ -32,7 +32,7 @@ const { data: jsonData, id } = defineProps<{
     id: string,
 }>()
 
-const music = z
+const autoReply = z
     .object({
         app: z.literal('com.tencent.autoreply'),
         meta: z.object({
@@ -58,17 +58,18 @@ const music = z
         })),
     }))
 const json = JSON.parse(jsonData)
-const parsedData = music.safeParse(json)
+const parsedData = autoReply.safeParse(json)
 const success = parsedData.success
 const parsedContent = parsedData.data!
+const chatStore = useChatStore()
 if (!success) {
     new Logger().error(parsedData.error, 'Card Parse Error')
 }
 
 function sendNotify(data: string) {
     sendMsgRaw(
-        String(runtimeData.chatInfo.show.id),
-        runtimeData.chatInfo.show.type,
+        String(chatStore.chatInfo.show.id),
+        chatStore.chatInfo.show.type,
         [
             {
                 type: 'at',

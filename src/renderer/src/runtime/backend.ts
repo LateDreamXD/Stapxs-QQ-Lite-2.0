@@ -1,14 +1,16 @@
-import app from '../main'
+import { i18n } from '../main'
 import VConsole from 'vconsole'
 
 import { IpcRenderer } from '@electron-toolkit/preload'
 import { InvokeArgs, InvokeOptions } from '@tauri-apps/api/core'
 import { CapacitorGlobal } from '@capacitor/core'
 import { Logger, LogType, PopInfo, PopType } from '../function/base'
-import { runtimeData } from '@renderer/function/msg'
+import { useSettingsStore } from '@renderer/state/settings'
 
 const logger = new Logger()
 const popInfo = new PopInfo()
+
+type CapacitorPluginRegistry = Record<string, Record<string, (...args: any[]) => any>>
 
 export const backend = {
     type: 'web' as 'electron' | 'tauri' | 'capacitor' | 'web',
@@ -21,8 +23,8 @@ export const backend = {
     {
         invoke: <T>(cmd: string, args?: InvokeArgs, options?: InvokeOptions) => Promise<T>
     } | {
-        capacitor: CapacitorGlobal,
-        plugins: CapacitorGlobal['Plugins'],
+        capacitor: CapacitorGlobal & Record<string, any>,
+        plugins: CapacitorPluginRegistry,
         vConsole: VConsole
     } | undefined,
     listener: undefined as ((event: string, ...args: any[]) => void) | undefined,
@@ -51,6 +53,23 @@ export const backend = {
     },
 
     /**
+     * 代理图片 URL 转换
+     * 此方法在移动端还会会向后端直接索要图片的 base64 数据，以解决移动端的跨域问题
+     * @param url 需要转换的 URL
+     * @returns 转换后的 URL（移动端返回 data:image/...）
+     */
+    async proxyImageUrl(url: string) {
+        if (this.isMobile() && url) {
+            const dataUrl = await this.call('Onebot', 'sys:getImageData', true, { url })
+            if (typeof dataUrl === 'string' && dataUrl.startsWith('data:image')) {
+                return dataUrl
+            }
+            logger.add(LogType.DEBUG, '移动端图片代理失败，回退到普通代理 URL', { url })
+        }
+        return this.proxyUrl(url)
+    },
+
+    /**
      * 反代理 URL 转换
      * @param url 需要转换的 URL
      * @returns 转换后的 URL
@@ -74,7 +93,7 @@ export const backend = {
      * @returns {Promise<void>}
      */
     async init() {
-        const { $t } = app.config.globalProperties
+        const $t = i18n.global.t
         if (window.electron != undefined) {
             this.type = 'electron';
             this.function = window.electron.ipcRenderer;
@@ -87,15 +106,17 @@ export const backend = {
             this.listener = (await import('@tauri-apps/api/event')).listen;
         } else if (window.Capacitor != undefined && window.Capacitor.isNativePlatform()) {
             this.type = 'capacitor';
+            const capacitor = window.Capacitor as CapacitorGlobal & Record<string, any>
+            const plugins = (capacitor.Plugins ?? {}) as CapacitorPluginRegistry
             this.function = {
-                capacitor: window.Capacitor,
-                plugins: window.Capacitor.Plugins,
+                capacitor,
+                plugins,
                 vConsole: new VConsole({
-                    theme: runtimeData.tags.darkMode ? 'dark' : 'light',
+                    theme: useSettingsStore().darkMode ? 'dark' : 'light',
                 })
             }
             this.listener = (type: string, name: string, callBack: (...args: any[]) => void) => {
-                window.Capacitor.Plugins[type].addListener(name, callBack)
+                plugins[type]?.addListener?.(name, callBack)
             }
         }
 
@@ -254,5 +275,19 @@ export const backend = {
             }
         }
         logger.error(null, `添加后端监听失败：${name}(${type})`)
+    },
+
+    /**
+     * 移除后端监听
+     * @param type capacitor：插件类型
+     * @param name 事件名称
+     * @param callBack 要移除的回调函数
+     */
+    removeListener(_type: string | undefined, name: string, callBack: (...args: any[]) => void) {
+        if(this.isDesktop() && this.function && 'removeListener' in this.function) {
+            this.function.removeListener(name, callBack)
+            return
+        }
+        // Capacitor 和 Web 不支持移除监听
     },
 }
