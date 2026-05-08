@@ -407,7 +407,6 @@ import { dbGetImage, hashUrl } from '@renderer/function/utils/localHistoryUtil'
 import JsonSegComp from './msg-component/JsonSegComp.vue'
 import XmlSegComp from './msg-component/XmlSegComp.vue'
 import { addMusic, MusicInfo } from './MusicPlayer.vue'
-import { undefined } from 'zod'
 
 type Msg = any
 type IUser = any
