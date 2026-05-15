@@ -115,6 +115,7 @@
 }
 .message-body > div {
     background: rgba(var(--color-card-rgb), 0.5);
+    backdrop-filter: blur(20px);
 }
 .msg-menu-body {
     background: rgba(var(--color-bg-rgb), 0.3);

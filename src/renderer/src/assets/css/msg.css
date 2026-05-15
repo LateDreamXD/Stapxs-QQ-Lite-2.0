@@ -163,9 +163,11 @@
 }
 .message.body-only > div.message-body > div {
     background: transparent;
+    backdrop-filter: unset;
     padding: 0;
 }
 .message-body.super-face > div {
+    backdrop-filter: unset;
     background: transparent;
 }
 .message-body.super-face > div > div {
