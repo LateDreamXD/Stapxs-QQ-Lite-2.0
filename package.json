@@ -14,7 +14,7 @@
     "check": "yarn lint && yarn typecheck",
     "lint:tauri": "cargo check --manifest-path src/tauri/Cargo.toml",
     "update:icon": "npx @capacitor/assets generate --assetPath 'src/mobile/_assets' --iosProject 'src/mobile/ios/App' --androidProject 'src/mobile/android' --android --ios",
-    "update:version": "npx @stapxs/capacitor-sync-version android ios",
+    "update:version": "node ./scripts/update-version.cjs android ios",
     "dev": "vite dev",
     "dev:electron": "cross-env DESKTOP=1 electron-vite dev",
     "dev:tauri": "cross-env DESKTOP=1 tauri dev -c src/tauri/tauri.conf.json",

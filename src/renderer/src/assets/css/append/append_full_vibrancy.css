@@ -226,7 +226,6 @@
 
 @media (max-width: 500px) {
     .chat-pan {
-        background: rgba(var(--color-card-2-rgb), 0.5);
         backdrop-filter: blur(10px);
     }
 }

@@ -1127,14 +1127,16 @@ onMounted(() => {
     if (data._from_local_db) {
         loadCachedImages()
     }
-    if(isMe.value && type != 'merge') {
-        msgBodyClass.value += ' me'
-    }
     if(isSuperFaceMsg()) {
         msgBodyClass.value += ' super-face'
     }
-    if(settingsStore.sysConfig.opt_ind_message === true) {
-        msgBodyClass.value += ' right'
+    if(type != 'body') {
+        if(isMe.value && type != 'merge') {
+            msgBodyClass.value += ' me'
+        }
+        if(settingsStore.sysConfig.opt_ind_message === true) {
+            msgBodyClass.value += ' right'
+        }
     }
 })
 
