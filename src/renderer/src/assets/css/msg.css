@@ -529,7 +529,7 @@ div:has(> .msg-img.long-img.light)::after {
 .msg-json {
     cursor: pointer;
     width: min-content;
-    min-width: 130px;
+    min-width: 35vw;
 }
 
 .msg-json > p {
@@ -803,5 +803,11 @@ span.user-title.robot {
 @media (max-width: 500px) {
     .msg-img.face.lottie-face {
         max-width: 40vw;
+    }
+
+    .msg-json {
+        cursor: pointer;
+        width: min-content;
+        min-width: 50vw;
     }
 }
