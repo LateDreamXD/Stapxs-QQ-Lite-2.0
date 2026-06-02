@@ -111,6 +111,21 @@
                 </label>
             </div>
             <div class="opt-item">
+                <div :class="checkDefault('opt_no_auto_load_image')" />
+                <font-awesome-icon :icon="['fas', 'image']" />
+                <div>
+                    <span>{{ $t('不自动加载图片') }}</span>
+                    <span>{{ $t('图片消息默认显示占位符，点击后再加载') }}</span>
+                </div>
+                <label class="ss-switch">
+                    <input v-model="settingsStore.sysConfig.opt_no_auto_load_image"
+                        type="checkbox" name="opt_no_auto_load_image" @change="save">
+                    <div>
+                        <div />
+                    </div>
+                </label>
+            </div>
+            <div class="opt-item">
                 <div :class="checkDefault('use_breakline')" />
                 <font-awesome-icon :icon="['fas', 'keyboard']" />
                 <div>
