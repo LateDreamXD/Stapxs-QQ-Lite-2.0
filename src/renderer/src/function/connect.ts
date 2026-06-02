@@ -38,12 +38,24 @@ export function appendAccessToken(url: string, token?: string) {
 }
 
 export function decodeStoredToken(token: string | undefined) {
-    if (!token) return ''
+    if (token === undefined) return undefined
+    if (token === '') return ''
     try {
         return decodeURIComponent(token)
     } catch (e) {
         return token
     }
+}
+
+function normalizeConnectionHistory(history: ConnectionHistoryItem[]) {
+    return history.map((item) => ({
+        ...item,
+        token: decodeStoredToken(item.token) ?? ''
+    }))
+}
+
+function withWebSocketProtocol(address: string, secure: boolean) {
+    return `${secure ? 'wss' : 'ws'}://${address}`
 }
 
 class TimeoutError extends Error {
@@ -129,7 +141,7 @@ export class Connector {
                 return
             }
 
-            let url = appendAccessToken(`ws://${address}`, token)
+            let url = appendAccessToken(withWebSocketProtocol(address, false), token)
             if (address.startsWith('ws://') || address.startsWith('wss://')) {
                 url = appendAccessToken(address, token)
             } else if (wss == undefined) {
@@ -137,10 +149,10 @@ export class Connector {
                 if (document.location.protocol == 'https:') {
                     // 判断连接 URL 的协议，https 优先尝试 wss
                     settingsStore.connectSsl = true
-                    url = appendAccessToken(`wss://${address}`, token)
+                    url = appendAccessToken(withWebSocketProtocol(address, true), token)
                 }
             } else {
-                url = appendAccessToken(`wss://${address}`, token)
+                url = appendAccessToken(withWebSocketProtocol(address, true), token)
             }
 
             if (!websocket) {
@@ -494,10 +506,7 @@ export function loadConnectionHistory(): ConnectionHistoryItem[] {
         try {
             const history = JSON.parse(historyStr)
             if (Array.isArray(history)) {
-                return history.map((item) => ({
-                    ...item,
-                    token: decodeStoredToken(item.token)
-                }))
+                return normalizeConnectionHistory(history)
             }
         } catch (e) {
             logger.error(e as Error, '加载连接历史失败')
@@ -505,10 +514,7 @@ export function loadConnectionHistory(): ConnectionHistoryItem[] {
     }
     // 如果是数组直接返回（Option.get 已经解析过）
     if (Array.isArray(historyStr)) {
-        return historyStr.map((item) => ({
-            ...item,
-            token: decodeStoredToken(item.token)
-        }))
+        return normalizeConnectionHistory(historyStr)
     }
     // 返回空数组作为默认值
     return []
@@ -566,7 +572,7 @@ export function saveConnectionToHistory(address: string, token: string, uin?: st
  */
 export function loadConnectionFromHistory(item: ConnectionHistoryItem) {
     login.address = item.address
-    login.token = decodeStoredToken(item.token)
+    login.token = item.token
 }
 
 /**

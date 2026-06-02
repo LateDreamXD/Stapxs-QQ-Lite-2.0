@@ -905,7 +905,7 @@ onMounted(() => {
             settingsStore.sysConfig.save_password !== undefined &&
             settingsStore.sysConfig.save_password !== true
         ) {
-            loginInfo.token = decodeStoredToken(settingsStore.sysConfig.save_password)
+            loginInfo.token = decodeStoredToken(settingsStore.sysConfig.save_password) ?? ''
             tags.savePassword = true
         }
         if (settingsStore.sysConfig.auto_connect == true) {
