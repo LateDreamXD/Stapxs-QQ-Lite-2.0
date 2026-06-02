@@ -33,21 +33,31 @@ export let websocket: WebSocket | undefined = undefined
 const WS_PROTOCOL = 'ws' + '://'
 const WSS_PROTOCOL = 'wss' + '://'
 
+function parseUrl(url: string) {
+    try {
+        return new URL(url)
+    } catch (e) {
+        if (e instanceof TypeError) return undefined
+        throw e
+    }
+}
+
 export function appendAccessToken(url: string, token?: string) {
     if (!token) return url
-    try {
-        const parsedUrl = new URL(url)
+    const parsedUrl = parseUrl(url)
+    if (parsedUrl) {
         parsedUrl.searchParams.set('access_token', token)
         return parsedUrl.toString()
-    } catch (e) {
-        const [baseUrl, hash = ''] = url.split('#')
-        const tokenParam = `access_token=${encodeURIComponent(token)}`
-        const nextUrl = baseUrl
-            .replace(/([?&])access_token=[^&]*/, `$1${tokenParam}`)
-        if (nextUrl !== baseUrl) return hash ? `${nextUrl}#${hash}` : nextUrl
-        const sep = baseUrl.includes('?') ? '&' : '?'
-        return `${baseUrl}${sep}${tokenParam}${hash ? `#${hash}` : ''}`
     }
+
+    const [baseUrl, hash = ''] = url.split('#')
+    const tokenParam = `access_token=${encodeURIComponent(token)}`
+    const hashSuffix = hash ? `#${hash}` : ''
+    const nextUrl = baseUrl
+        .replace(/([?&])access_token=[^&]*/, `$1${tokenParam}`)
+    if (nextUrl !== baseUrl) return nextUrl + hashSuffix
+    const sep = baseUrl.includes('?') ? '&' : '?'
+    return `${baseUrl}${sep}${tokenParam}${hashSuffix}`
 }
 
 export function decodeStoredToken(token: string): string
@@ -58,6 +68,7 @@ export function decodeStoredToken(token: string | undefined) {
     try {
         return decodeURIComponent(token)
     } catch (e) {
+        if (!(e instanceof URIError)) throw e
         return token
     }
 }
@@ -482,11 +493,12 @@ export class Connector {
         args: { [key: string]: any },
         echo: string = name,
     ) {
-        const json = JSON.stringify({
+        const actionData: BotActionElem = {
             action: name,
             params: args,
             echo: echo,
-        } as BotActionElem)
+        }
+        const json = JSON.stringify(actionData)
         // 发送
         if(!backend.isWeb()) {
             backend.call('Onebot', 'onebot:send', false, json)
