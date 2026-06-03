@@ -67,6 +67,7 @@ jobs:
                   toolchain: stable
                   profile: minimal
                   override: true
+
             - name: 检查 Tauri 环境
               run: yarn tauri info
 

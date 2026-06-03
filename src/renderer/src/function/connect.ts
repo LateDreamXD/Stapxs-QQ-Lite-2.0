@@ -30,6 +30,66 @@ let retry = 0
 let forceCloseReason: string | undefined = undefined
 
 export let websocket: WebSocket | undefined = undefined
+const WS_PROTOCOL = 'ws' + '://'
+const WSS_PROTOCOL = 'wss' + '://'
+
+function parseUrl(url: string) {
+    try {
+        return new URL(url)
+    } catch (e) {
+        if (e instanceof TypeError) return undefined
+        throw e
+    }
+}
+
+export function appendAccessToken(url: string, token?: string) {
+    if (!token) return url
+    const parsedUrl = parseUrl(url)
+    if (parsedUrl) {
+        parsedUrl.searchParams.set('access_token', token)
+        return parsedUrl.toString()
+    }
+
+    const [baseUrl, hash = ''] = url.split('#')
+    const tokenParam = `access_token=${encodeURIComponent(token)}`
+    const hashSuffix = hash ? `#${hash}` : ''
+    const nextUrl = baseUrl
+        .replace(/([?&])access_token=[^&]*/, `$1${tokenParam}`)
+    if (nextUrl !== baseUrl) return nextUrl + hashSuffix
+    const sep = baseUrl.includes('?') ? '&' : '?'
+    return `${baseUrl}${sep}${tokenParam}${hashSuffix}`
+}
+
+export function decodeStoredToken(token: string): string
+export function decodeStoredToken(token: undefined): undefined
+export function decodeStoredToken(token: string | undefined) {
+    if (token === undefined) return undefined
+    if (token === '') return ''
+    try {
+        return decodeURIComponent(token)
+    } catch (e) {
+        if (!(e instanceof URIError)) throw e
+        return token
+    }
+}
+
+function normalizeConnectionHistory(history: unknown[]) {
+    return history.flatMap((item) => {
+        if (typeof item !== 'object' || item === null) return []
+        const historyItem = item as Partial<ConnectionHistoryItem>
+        if (typeof historyItem.address !== 'string') return []
+        return [{
+            ...historyItem,
+            address: historyItem.address,
+            token: typeof historyItem.token === 'string'? decodeStoredToken(historyItem.token): '',
+            lastConnected: typeof historyItem.lastConnected === 'number'? historyItem.lastConnected: 0
+        }]
+    })
+}
+
+function withWebSocketProtocol(address: string, secure: boolean) {
+    return `${secure ? WSS_PROTOCOL : WS_PROTOCOL}${address}`
+}
 
 class TimeoutError extends Error {
     echo: string
@@ -73,7 +133,7 @@ export class Connector {
         if (!backend.isWeb()) {
             logger.add(LogType.WS, '使用后端连接模式')
             backend.call('Onebot', 'onebot:connect', false,
-                backend.isDesktop() ?  { address: address, token: token, } : { url: `${address}?access_token=${token}` })
+                backend.isDesktop() ?  { address: address, token: token, } : { url: appendAccessToken(address, token) })
             return
         }
 
@@ -87,7 +147,7 @@ export class Connector {
                 return
             }
             logger.add(LogType.WS, '使用 SSE 连接模式')
-            const sse = new EventSource(`${import.meta.env.VITE_APP_SSE_EVENT_ADDRESS}?access_token=${token}`)
+            const sse = new EventSource(appendAccessToken(import.meta.env.VITE_APP_SSE_EVENT_ADDRESS, token))
             sse.onopen = () => {
                 login.creating = false
                 this.onopen(address, token)
@@ -114,18 +174,18 @@ export class Connector {
                 return
             }
 
-            let url = `ws://${address}?access_token=${token}`
-            if (address.startsWith('ws://') || address.startsWith('wss://')) {
-                url = `${address}?access_token=${token}`
+            let url = appendAccessToken(withWebSocketProtocol(address, false), token)
+            if (address.startsWith(WS_PROTOCOL) || address.startsWith(WSS_PROTOCOL)) {
+                url = appendAccessToken(address, token)
             } else if (wss == undefined) {
                 // 判断连接类型
                 if (document.location.protocol == 'https:') {
                     // 判断连接 URL 的协议，https 优先尝试 wss
                     settingsStore.connectSsl = true
-                    url = `wss://${address}?access_token=${token}`
+                    url = appendAccessToken(withWebSocketProtocol(address, true), token)
                 }
             } else {
-                url = `wss://${address}?access_token=${token}`
+                url = appendAccessToken(withWebSocketProtocol(address, true), token)
             }
 
             if (!websocket) {
@@ -433,11 +493,12 @@ export class Connector {
         args: { [key: string]: any },
         echo: string = name,
     ) {
-        const json = JSON.stringify({
+        const actionData: BotActionElem = {
             action: name,
             params: args,
             echo: echo,
-        } as BotActionElem)
+        }
+        const json = JSON.stringify(actionData)
         // 发送
         if(!backend.isWeb()) {
             backend.call('Onebot', 'onebot:send', false, json)
@@ -479,7 +540,7 @@ export function loadConnectionHistory(): ConnectionHistoryItem[] {
         try {
             const history = JSON.parse(historyStr)
             if (Array.isArray(history)) {
-                return history
+                return normalizeConnectionHistory(history)
             }
         } catch (e) {
             logger.error(e as Error, '加载连接历史失败')
@@ -487,7 +548,7 @@ export function loadConnectionHistory(): ConnectionHistoryItem[] {
     }
     // 如果是数组直接返回（Option.get 已经解析过）
     if (Array.isArray(historyStr)) {
-        return historyStr
+        return normalizeConnectionHistory(historyStr)
     }
     // 返回空数组作为默认值
     return []

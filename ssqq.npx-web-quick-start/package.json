@@ -14,7 +14,7 @@
   },
   "repository": "https://github.com/Stapxs/Stapxs-QQ-Lite-2.0",
   "author": "Stapx Steve [林槐]",
-  "license": "Apache-2.0",
+  "license": "AGPL-3.0",
   "private": false,
   "dependencies": {
     "log4js": "^6.9.1",
