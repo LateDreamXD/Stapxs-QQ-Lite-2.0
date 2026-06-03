@@ -1,7 +1,6 @@
 <template>
     <div ref="lottieContainer" :class="['lazy-lottie', {'loaded': loaded }]">
         <Lottie
-            v-if="shouldRender"
             ref="lottieRef"
             :animation-link="animationLink"
             :title="title"
@@ -21,7 +20,6 @@ defineProps<{
 
 const lottieContainer = ref<HTMLElement | null>(null)
 const lottieRef = ref<any>(null)
-const shouldRender = ref(false)
 const loaded = ref(false)
 let observer: IntersectionObserver | null = null
 
@@ -47,15 +45,8 @@ onMounted(() => {
         (entries) => {
             entries.forEach((entry) => {
                 if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
-                    // 至少 50% 可见才渲染和播放
-                    if (!shouldRender.value) {
-                        shouldRender.value = true
-                        setTimeout(playAnimation, 0)
-                    } else {
-                        playAnimation()
-                    }
+                    playAnimation()
                 } else if (entry.intersectionRatio < 0.1) {
-                    // 几乎不可见时暂停
                     pauseAnimation()
                 }
             })
@@ -67,17 +58,6 @@ onMounted(() => {
     )
 
     observer.observe(lottieContainer.value)
-
-    // 立即检查是否已经在视口内
-    const rect = lottieContainer.value.getBoundingClientRect()
-    const windowHeight = window.innerHeight || document.documentElement.clientHeight
-    const isVisible = rect.top >= 0 && rect.bottom <= windowHeight &&
-                     rect.height > 0 && (rect.height / (rect.bottom - rect.top)) >= 0.5
-
-    if (isVisible && !shouldRender.value) {
-        shouldRender.value = true
-        setTimeout(playAnimation, 0)
-    }
 })
 
 onUnmounted(() => {

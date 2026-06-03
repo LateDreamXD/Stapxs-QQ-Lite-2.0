@@ -295,7 +295,9 @@ input {
     display: flex;
 }
 .sys-not-pan > div {
+    padding-right: 10px;
     pointer-events: all;
+    overflow-y: scroll;
 }
 .sys-not-pan > div:first-child {
     background: var(--color-card-1);

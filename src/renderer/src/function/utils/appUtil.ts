@@ -1207,6 +1207,8 @@ export function loadJsonMap(name: string) {
                     msgPath = newMsgPath
                     logger.system('非常抱歉开发者，已帮阁下将映射表重定向加载为 ：' + msgPath?.name + ' （慌张）')
                 }
+            } else {
+                logger.system('开发者，没有找到你需要的映射表……')
             }
             const authStore = useAuthStore()
             authStore.jsonMap = msgPath
