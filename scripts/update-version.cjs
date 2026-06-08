@@ -31,9 +31,7 @@ function updateTauriVersion(appVersion) {
 function updateNapcatVersion(appVersion) {
     const packageInfo = readJson(napcatPackagePath);
     const currentVersion = packageInfo.version || '';
-    const pluginSuffix = currentVersion.includes('-')
-        ? currentVersion.slice(currentVersion.indexOf('-'))
-        : '';
+    const pluginSuffix = currentVersion.includes('-')? currentVersion.slice(currentVersion.indexOf('-')): '';
     const nextVersion = `${appVersion}${pluginSuffix}`;
 
     if (currentVersion === nextVersion) {
@@ -70,16 +68,12 @@ function main() {
 
     const tauriUpdated = updateTauriVersion(appVersion);
     console.log(
-        tauriUpdated
-            ? `Updated src/tauri/Cargo.toml -> ${appVersion}`
-            : 'src/tauri/Cargo.toml already up to date'
+        tauriUpdated? `Updated src/tauri/Cargo.toml -> ${appVersion}`: 'src/tauri/Cargo.toml already up to date'
     );
 
     const napcatUpdated = updateNapcatVersion(appVersion);
     console.log(
-        napcatUpdated
-            ? `Updated ssqq.napcat-plugin/package.json -> ${readJson(napcatPackagePath).version}`
-            : 'ssqq.napcat-plugin/package.json already up to date'
+        napcatUpdated? `Updated ssqq.napcat-plugin/package.json -> ${readJson(napcatPackagePath).version}`: 'ssqq.napcat-plugin/package.json already up to date'
     );
 
     runCapacitorSync(syncTargets);
