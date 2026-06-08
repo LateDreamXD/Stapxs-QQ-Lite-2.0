@@ -2046,9 +2046,18 @@ function newMsg(_: string, data: any) {
             }
         }
 
-        // 会话状态更新 ============================================
         const isGroupMessage = data.message_type === 'group'
         const isTempGroupMessage = data.sub_type === 'group'
+        const groupNoticeType = settingsStore.sysConfig.group_notice_type
+        const hasForcedGroupInnerNotice = data.atme || data.atall || isImportant || isGroupNotice
+        const allowGroupInnerNotice = !isGroupMessage ||
+            groupNoticeType !== 'none' ||
+            hasForcedGroupInnerNotice
+        const allowGroupSystemNotice = !isGroupMessage ||
+            groupNoticeType === 'all' ||
+            hasForcedGroupInnerNotice
+
+        // 会话状态更新 ============================================
         const sessionId = Number(isTempGroupMessage ? sender : id)
         let session = contactStore.baseOnMsgList.get(sessionId)
         if (!session) {
@@ -2068,13 +2077,18 @@ function newMsg(_: string, data: any) {
         }
         if (session) {
             Object.assign(session, formatMessageData(data, isGroupMessage))
-            if (sender != loginId && sender != 0 && sessionId !== showId) {
+            if (
+                sender != loginId &&
+                sender != 0 &&
+                sessionId !== showId &&
+                allowGroupInnerNotice
+            ) {
                 if (!session.new_msg) {
                     session.new_msg = true
                     contactStore.newMsgCount++
                 }
             }
-            if (sessionId !== showId) {
+            if (sessionId !== showId && allowGroupInnerNotice) {
                 if (data.atme) { session.highlight = $t('[有人@你]') }
                 if (data.atall) { session.highlight = $t('[@全体]') }
                 if (isImportant) { session.highlight = $t('[特別关心]') }
@@ -2083,13 +2097,10 @@ function newMsg(_: string, data: any) {
         }
 
         // 通知判定 ============================================
-        const groupNoticeType = settingsStore.sysConfig.group_notice_type
-        const groupPolicyAllowsNotice = groupNoticeType !== 'none' ||
-            data.atme || data.atall || isImportant || isGroupNotice
         if (
             sender != loginId &&
             sender != 0 &&
-            (!isGroupMessage || groupPolicyAllowsNotice)
+            allowGroupSystemNotice
         ) {
             logger.add(LogType.DEBUG, '通知判定：', {
                 notShow: sessionId !== showId,
