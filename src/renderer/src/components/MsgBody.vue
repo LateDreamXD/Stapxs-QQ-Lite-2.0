@@ -186,6 +186,12 @@
                                 现在还有不支持 video tag 的浏览器吗？
                             </video>
                         </div>
+                        <template v-else-if="item.type == 'record'">
+                            <VoiceMsg
+                                :item="item"
+                                :message-id="String(data.message_id)"
+                                :is-me="isMe" />
+                        </template>
                         <template v-else-if="item.type == 'forward'">
                             <div class="msg-raw-forward"
                                 @click="openMerge()">
@@ -211,6 +217,9 @@
                                                 </span>
                                                 <span v-else-if="msg.type == 'video'">
                                                     [{{ $t('视频') }}]
+                                                </span>
+                                                <span v-else-if="msg.type == 'record'">
+                                                    [{{ $t('语音') }}]
                                                 </span>
                                                 <span v-else-if="msg.type == 'forward'">
                                                     [{{ $t('聊天记录') }}]
@@ -419,6 +428,7 @@ import { Img } from '@renderer/function/model/img'
 import { dbGetImage, hashUrl } from '@renderer/function/utils/localHistoryUtil'
 import JsonSegComp from './msg-component/JsonSegComp.vue'
 import XmlSegComp from './msg-component/XmlSegComp.vue'
+import VoiceMsg from './VoiceMsg.vue'
 import { addMusic, MusicInfo } from './MusicPlayer.vue'
 
 type Msg = any

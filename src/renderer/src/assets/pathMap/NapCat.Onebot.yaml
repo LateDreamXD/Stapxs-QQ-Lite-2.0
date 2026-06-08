@@ -216,3 +216,9 @@ ban_mumber:
 # 撤回消息
 delete_msg:
     name: delete_msg
+# 获取语音消息文件
+get_record:
+    name: get_record
+    file: $..file
+    url: $..url
+    base64: $..base64
