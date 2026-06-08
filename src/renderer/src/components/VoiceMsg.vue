@@ -8,7 +8,6 @@
 <template>
     <div class="voice-msg"
         :class="{ me: isMe, loading: isLoading, playing: isPlaying }"
-        :style="bubbleStyle"
         @click.stop="togglePlay">
         <!-- 播放/加载图标 -->
         <div class="voice-icon">
@@ -18,18 +17,21 @@
             <font-awesome-icon v-else :icon="['fas', 'play']" />
         </div>
 
-        <!-- 进度条区域 -->
+        <!-- 频谱区域 -->
         <div class="voice-progress">
             <template v-if="isUnsupported">
                 <span class="voice-unsupported">{{ $t('不支持的消息') }}</span>
             </template>
             <template v-else>
-                <div class="voice-bar-bg">
-                    <div class="voice-bar-fill" :style="{ width: progressPercent + '%' }" />
+                <div class="voice-spectrum">
+                    <div
+                        v-for="(height, index) in displaySpectrumBars"
+                        :key="index"
+                        class="voice-spectrum-bar"
+                        :class="{ active: index < activeBarCount }"
+                        :style="{ height: `${height}%` }" />
                 </div>
-                <span class="voice-duration">
-                    {{ isError ? $t('加载失败') : formatTime }}
-                </span>
+                <span class="voice-duration">{{ isError ? $t('加载失败') : formatSeconds }}</span>
             </template>
         </div>
 
@@ -48,8 +50,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
-import { loadRecord, revokeRecord, formatRecordDuration, type RecordMsgData } from '@renderer/function/utils/recordUtil'
+import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { loadRecord, revokeRecord, type RecordMsgData } from '@renderer/function/utils/recordUtil'
 import { Logger } from '@renderer/function/base'
 
 const logger = new Logger()
@@ -80,6 +82,14 @@ const isPlaying = ref(false)
 const currentTime = ref(0)
 const duration = ref(props.item.duration || 0)
 const loaded = ref(false)
+const spectrumBars = ref<number[]>([])
+const hasSpectrumData = ref(false)
+
+let spectrumBuildToken = 0
+
+const SPECTRUM_MIN_BAR_HEIGHT = 14
+const SPECTRUM_FFT_SIZE = 256
+const SPECTRUM_BAR_COUNT = 32
 
 // ============================================================================
 // 计算属性
@@ -90,35 +100,163 @@ const progressPercent = computed(() => {
     return Math.min(100, (currentTime.value / duration.value) * 100)
 })
 
-const formatTime = computed(() => {
-    if (isLoading.value) return '--:--'
-    if (isError.value) return '⚠'
-    if (isUnsupported.value) return ''
-    if (!loaded.value && duration.value <= 0) return '--:--'
-    if (isPlaying.value || currentTime.value > 0) {
-        return formatRecordDuration(currentTime.value)
-    }
-    return formatRecordDuration(duration.value)
+const spectrumBarCount = computed(() => {
+    return SPECTRUM_BAR_COUNT
 })
 
-/**
- * 根据语音时长计算气泡宽度
- * 模仿 QQ 语音消息样式：时长越长，气泡越宽
- * 范围：120px (最短) ~ 260px (最长，上限 60 秒)
- */
-const bubbleStyle = computed(() => {
-    const dur = duration.value || 1
-    const minWidth = 120
-    const maxWidth = 260
-    const width = Math.min(maxWidth, Math.max(minWidth, minWidth + (dur / 60) * (maxWidth - minWidth)))
-    return {
-        width: `${Math.round(width)}px`,
-    }
+const placeholderSpectrumBars = computed(() => createPlaceholderSpectrumBars(spectrumBarCount.value))
+
+const displaySpectrumBars = computed(() => {
+    return hasSpectrumData.value && spectrumBars.value.length > 0 ? spectrumBars.value : placeholderSpectrumBars.value
+})
+
+const activeBarCount = computed(() => {
+    return Math.round((displaySpectrumBars.value.length * progressPercent.value) / 100)
+})
+
+function formatSecondsLabel(value: number) {
+    return `${Math.max(1, Math.ceil(value))}″`
+}
+
+const formatSeconds = computed(() => {
+    if (isLoading.value) return '--″'
+    if (isError.value) return '⚠'
+    if (isUnsupported.value) return ''
+    if (!loaded.value && duration.value <= 0) return '--″'
+    const seconds = isPlaying.value || currentTime.value > 0 ? currentTime.value : duration.value
+    return formatSecondsLabel(seconds)
 })
 
 // ============================================================================
 // 方法
 // ============================================================================
+
+function createPlaceholderSpectrumBars(count: number) {
+    return Array.from({ length: count }, (_, index) => {
+        const t = count <= 1 ? 0 : index / (count - 1)
+        const curve = Math.sin(t * Math.PI)
+        return Math.round(SPECTRUM_MIN_BAR_HEIGHT + curve * 34)
+    })
+}
+
+function normalizeSpectrumBars(samples: number[], count: number) {
+    if (!samples.length) return createPlaceholderSpectrumBars(count)
+
+    const merged = Array.from({ length: count }, (_, index) => {
+        const start = Math.floor((index * samples.length) / count)
+        const end = Math.max(start + 1, Math.floor(((index + 1) * samples.length) / count))
+        const slice = samples.slice(start, end)
+
+        if (!slice.length) return 0
+
+        const peak = Math.max(...slice)
+        const average = slice.reduce((sum, value) => sum + value, 0) / slice.length
+        return peak * 0.65 + average * 0.35
+    })
+
+    const maxValue = Math.max(...merged, 0.001)
+
+    return merged.map((value, index) => {
+        const normalized = Math.min(1, value / maxValue)
+        const eased = Math.pow(normalized, 0.82)
+        const smoothed = (() => {
+            const prev = merged[Math.max(0, index - 1)] / maxValue
+            const next = merged[Math.min(merged.length - 1, index + 1)] / maxValue
+            return (prev * 0.2) + (eased * 0.6) + (next * 0.2)
+        })()
+
+        return Math.round(SPECTRUM_MIN_BAR_HEIGHT + Math.min(1, smoothed) * (100 - SPECTRUM_MIN_BAR_HEIGHT))
+    })
+}
+
+function buildWaveFallback(buffer: AudioBuffer, count: number) {
+    const channelData = buffer.getChannelData(0)
+    const samples = Array.from({ length: count }, (_, index) => {
+        const start = Math.floor((index * channelData.length) / count)
+        const end = Math.max(start + 1, Math.floor(((index + 1) * channelData.length) / count))
+        let energy = 0
+
+        for (let i = start; i < end; i += 1) {
+            energy += Math.abs(channelData[i])
+        }
+
+        return energy / Math.max(1, end - start)
+    })
+
+    return normalizeSpectrumBars(samples, count)
+}
+
+async function analyzeBufferSpectrum(buffer: AudioBuffer, count: number) {
+    const offlineContext = new OfflineAudioContext(1, buffer.length, buffer.sampleRate)
+    const source = offlineContext.createBufferSource()
+    const analyser = offlineContext.createAnalyser()
+    const processor = offlineContext.createScriptProcessor(2048, 1, 1)
+    const frequencyData = new Uint8Array(analyser.frequencyBinCount)
+    const collected: number[] = []
+
+    analyser.fftSize = SPECTRUM_FFT_SIZE
+    analyser.smoothingTimeConstant = 0.35
+    source.buffer = buffer
+
+    processor.onaudioprocess = () => {
+        analyser.getByteFrequencyData(frequencyData)
+        const average = frequencyData.reduce((sum, value) => sum + value, 0) / (frequencyData.length * 255)
+        collected.push(average)
+    }
+
+    source.connect(analyser)
+    analyser.connect(processor)
+    processor.connect(offlineContext.destination)
+    source.start(0)
+
+    await offlineContext.startRendering()
+
+    source.disconnect()
+    analyser.disconnect()
+    processor.disconnect()
+
+    return normalizeSpectrumBars(collected, count)
+}
+
+async function buildSpectrumBars() {
+    if (!audioSrc.value) return
+
+    const currentToken = ++spectrumBuildToken
+    const count = spectrumBarCount.value
+
+    hasSpectrumData.value = false
+    spectrumBars.value = createPlaceholderSpectrumBars(count)
+
+    try {
+        const response = await fetch(audioSrc.value)
+        const arrayBuffer = await response.arrayBuffer()
+        const audioContext = new AudioContext()
+        let decodedBuffer: AudioBuffer
+
+        try {
+            decodedBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0))
+        } finally {
+            await audioContext.close()
+        }
+
+        if (currentToken !== spectrumBuildToken) return
+
+        try {
+            spectrumBars.value = await analyzeBufferSpectrum(decodedBuffer, count)
+        } catch (error) {
+            console.warn('频谱分析失败，回退到波形采样', error)
+            spectrumBars.value = buildWaveFallback(decodedBuffer, count)
+        }
+
+        hasSpectrumData.value = true
+    } catch (error) {
+        console.warn('语音频谱构建失败', error)
+        if (currentToken === spectrumBuildToken) {
+            spectrumBars.value = createPlaceholderSpectrumBars(count)
+            hasSpectrumData.value = false
+        }
+    }
+}
 
 /**
  * 加载语音资源
@@ -135,6 +273,7 @@ async function loadVoice() {
         audioSrc.value = result.src
         duration.value = result.duration || props.item.duration || 0
         loaded.value = true
+        void buildSpectrumBars()
 
         logger.debug(`语音加载完成: 时长=${duration.value}s`)
     } catch (e) {
@@ -191,6 +330,7 @@ function onLoaded() {
     const audio = audioRef.value
     if (audio && audio.duration && !duration.value) {
         duration.value = audio.duration
+        void buildSpectrumBars()
     }
     logger.debug(`音频元数据加载完成: ${duration.value}s`)
 }
@@ -230,7 +370,19 @@ onMounted(() => {
     loadVoice()
 })
 
+watch(spectrumBarCount, (count) => {
+    if (!hasSpectrumData.value) {
+        spectrumBars.value = createPlaceholderSpectrumBars(count)
+        return
+    }
+
+    if (loaded.value && audioSrc.value && spectrumBars.value.length !== count) {
+        void buildSpectrumBars()
+    }
+}, { immediate: true })
+
 onBeforeUnmount(() => {
+    spectrumBuildToken += 1
     // 停止播放
     const audio = audioRef.value
     if (audio) {
@@ -247,25 +399,9 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 12px;
     cursor: pointer;
-    user-select: none;
     border-radius: 10px;
-    background: var(--color-card-2);
     transition: all 0.2s ease;
-}
-
-.voice-msg:hover {
-    background: var(--color-card-1);
-    transform: scale(1.01);
-}
-
-.voice-msg.me {
-    background: var(--color-card-1);
-}
-
-.voice-msg.me:hover {
-    background: var(--color-card);
 }
 
 .voice-msg.loading {
@@ -280,16 +416,17 @@ onBeforeUnmount(() => {
 /* 播放图标 */
 .voice-icon {
     flex-shrink: 0;
-    width: 32px;
-    height: 32px;
+    width: 22px;
+    height: 23px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    background: var(--color-card);
+    background: rgba(var(--color-card-rgb), 0.5);
     color: var(--color-font-2);
-    font-size: 14px;
+    font-size: 11px;
     transition: all 0.2s ease;
+    padding-left: 2px;
 }
 
 .voice-msg.me .voice-icon {
@@ -301,39 +438,63 @@ onBeforeUnmount(() => {
     background: var(--color-main);
     color: var(--color-font-r);
 }
+.voice-msg.me.playing .voice-icon {
+    background: rgba(var(--color-card-2-rgb), 0.5);
+}
 
-/* 进度条区域 */
+/* 频谱区域 */
 .voice-progress {
     flex: 1;
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    align-items: center;
+    gap: 8px;
     min-width: 0;
 }
 
-.voice-bar-bg {
-    width: 100%;
-    height: 4px;
-    border-radius: 2px;
-    background: var(--color-card-1);
-    overflow: hidden;
+.voice-spectrum {
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-right: 5px;
 }
 
-.voice-bar-fill {
-    height: 100%;
-    border-radius: 2px;
-    background: var(--color-main);
-    transition: width 0.1s linear;
+.voice-spectrum-bar {
+    flex: 1 1 0;
+    min-width: 2px;
+    border-radius: 999px;
+    background: var(--color-font);
+    opacity: 0.5;
+    transition: height 0.2s ease, background-color 0.12s linear, opacity 0.12s linear;
+}
+
+.voice-spectrum-bar.active {
+    background: var(--color-font);
+    opacity: 1;
+}
+
+.voice-msg.me .voice-spectrum-bar {
+    background: var(--color-card-2);
+}
+
+.voice-msg.me .voice-spectrum-bar.active {
+    background: var(--color-card-2);
 }
 
 .voice-duration {
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     color: var(--color-font-2);
     white-space: nowrap;
+    flex-shrink: 0;
+}
+.voice-msg.me span.voice-duration {
+    color: var(--color-font-r);
 }
 
 .voice-unsupported {
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     color: var(--color-font-2);
     opacity: 0.6;
     font-style: italic;
