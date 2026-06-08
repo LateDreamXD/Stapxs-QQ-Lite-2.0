@@ -992,7 +992,7 @@ onMounted(() => {
                 baseUrl: import.meta.env.VITE_APP_MU_ADDRESS,
                 websiteId: import.meta.env.VITE_APP_MU_ID
             } as any
-            // 给页面添加一个来源域名方便在非 web 端
+            // 给页面添加一个来源域名方便在非 web 端获取统计信息
             if(!backend.isWeb()) {
                 config.hostName = backend.type + '.stapxs.cn'
             } else if(napcat) {

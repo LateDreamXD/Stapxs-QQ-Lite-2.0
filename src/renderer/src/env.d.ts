@@ -12,6 +12,16 @@ declare module '*.vue' {
 declare interface Window {
     moYu: any
     _AMapSecurityConfig: string | undefined
+    pinyin?: {
+        pinyin: (
+            value: string,
+            options: {
+                heteronym: boolean
+                compact: boolean
+                style: string
+            }
+        ) => string[][]
+    }
     createMap: (key: string | undefined, msgId: string, point: {
         lat: number,
         lng: number

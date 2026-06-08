@@ -20,6 +20,7 @@ import './assets/css/sys_notice.css'
 
 import { initAMapApiLoader } from '@vuemap/vue-amap'
 import { getPortableFileLang } from './function/utils/systemUtil'
+import { preloadPinyin } from './function/utils/pinyin'
 
 // 初始化高德地图 API
 initAMapApiLoader({
@@ -54,6 +55,8 @@ app.component('FontAwesomeIcon', FontAwesomeIcon)
 app.mount('#app')
 export default app
 export const uptime = new Date().getTime()
+
+preloadPinyin()
 
 const strList = ['VERSION', 'WELCOME', 'HELLO']
 const colorList = [

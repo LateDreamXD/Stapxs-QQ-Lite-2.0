@@ -58,7 +58,7 @@ import { dbRevokeMessage, saveMessagesWithSideEffects } from './utils/localHisto
 import { addDownloadTask, completeUploadTask } from '@renderer/components/FileManager.vue'
 import { refreshFavicon } from './favicon'
 import { Img } from './model/img'
-import { getPinyin } from './utils/pinyin'
+import { ensurePinyinLoaded, getPinyin, isPinyinReady } from './utils/pinyin'
 import { useAuthStore } from '@renderer/state/auth'
 import { useContactStore } from '@renderer/state/contact'
 import { useChatStore } from '@renderer/state/chat'
@@ -96,6 +96,80 @@ export function clearLoginWaveTimer() {
     }
 }
 
+function resolveContactPinyinName(item: UserFriendElem | UserGroupElem) {
+    if ((item as UserFriendElem).group_id) {
+        return (item as UserFriendElem).group_name ?? ''
+    }
+    return `${(item as UserGroupElem).nickname ?? ''},${(item as UserGroupElem).remark ?? ''}`
+}
+
+function resolvePinyinFirstChar(value: string) {
+    return getPinyin(value)
+        .main
+        .at(0)
+        ?.substring(0, 1)
+        .toUpperCase() ?? ' '
+}
+
+function sortContactListByPinyin<T extends UserFriendElem | UserGroupElem>(list: T[]) {
+    list.sort((a, b) => {
+        if (a.py_start && b.py_start) {
+            return a.py_start.charCodeAt(0) - b.py_start.charCodeAt(0)
+        }
+        return 0
+    })
+}
+
+function buildPinyinForContacts(
+    list: (UserFriendElem | UserGroupElem)[],
+    startIndex = 0,
+    onDone?: () => void,
+) {
+    if (!isPinyinReady()) {
+        onDone?.()
+        return
+    }
+
+    const batchSize = 100
+    const endIndex = Math.min(startIndex + batchSize, list.length)
+
+    for (let index = startIndex; index < endIndex; index++) {
+        const item = list[index]
+        item.py_name = getPinyin(resolveContactPinyinName(item))
+        item.py_start = item.py_name.main.at(0)?.substring(0, 1).toUpperCase() ?? ' '
+    }
+
+    if (endIndex >= list.length) {
+        onDone?.()
+        return
+    }
+
+    setTimeout(() => {
+        buildPinyinForContacts(list, endIndex, onDone)
+    }, 0)
+}
+
+function hydrateContactPinyinLater(list: (UserFriendElem | UserGroupElem)[]) {
+    const contactStore = useContactStore()
+
+    const applyHydration = () => {
+        buildPinyinForContacts(list, 0, () => {
+            sortContactListByPinyin(list)
+            contactStore.userList = [...contactStore.userList]
+        })
+    }
+
+    if (isPinyinReady()) {
+        applyHydration()
+        return
+    }
+
+    void ensurePinyinLoaded().then((loaded) => {
+        if (!loaded) return
+        applyHydration()
+    })
+}
+
 function clearMetaEventWatchdog() {
     const connectionStore = useConnectionStore()
     if (connectionStore.metaEventWatchTimer) {
@@ -118,9 +192,9 @@ function refreshMetaEventWatchdog(interval: number) {
         if (connectionStore.metaEventTimeoutTriggered) return
         connectionStore.metaEventTimeoutTriggered = true
         connectionStore.metaEventWatchTimer = undefined
-        logger.add(LogType.WS, 'meta_event 超时，连续两个心跳周期未收到心跳，准备断开连接')
-        Connector.forceDisconnect('meta_event timeout')
-    }, interval * 2000)
+        logger.add(LogType.WS, '心跳包超时，准备断开连接')
+        Connector.forceDisconnect('心跳包超时')
+    }, interval * 1000)
 }
 
 export function dispatch(raw: string | { [k: string]: any }, echo?: string) {
@@ -600,6 +674,31 @@ const msgFunctions = {
     getGroupMemberList: (_: string, msg: { [key: string]: any }) => {
         const chatStore = useChatStore()
         const data = msg.data as GroupMemberInfoElem[]
+        const sortAndSaveMembers = () => {
+            const adminList = data.filter((item: GroupMemberInfoElem) => {
+                return item.role === 'admin'
+            })
+            adminList.sort((a, b) => {
+                if (a.py_start && b.py_start) {
+                    return a.py_start.charCodeAt(0) - b.py_start.charCodeAt(0)
+                }
+                return 0
+            })
+            const createrList = data.filter((item: GroupMemberInfoElem) => {
+                return item.role === 'owner'
+            })
+            const memberList = data.filter((item: GroupMemberInfoElem) => {
+                return item.role !== 'admin' && item.role !== 'owner'
+            })
+            memberList.sort((a, b) => {
+                if (a.py_start && b.py_start) {
+                    return a.py_start.charCodeAt(0) - b.py_start.charCodeAt(0)
+                }
+                return 0
+            })
+            chatStore.chatInfo.info.group_members = createrList.concat(adminList.concat(memberList))
+        }
+
         data.forEach((item: any) => {
             let name: string
             if (item.card != undefined && item.card != '') {
@@ -611,39 +710,27 @@ const msgFunctions = {
             }
 
             // 获取拼音首字母
-            const first = name.substring(0, 1)
-            item.py_start = getPinyin(first)
-                .main
-                .at(0)
-                ?.substring(0, 1)
-                .toUpperCase() ?? ' '
+            item.py_start = resolvePinyinFirstChar(name.substring(0, 1))
         })
-        // 筛选列表
-        const adminList = data.filter((item: GroupMemberInfoElem) => {
-            return item.role === 'admin'
-        })
-        adminList.sort((a, b) => {
-            if (a.py_start && b.py_start) {
-                return a.py_start.charCodeAt(0) - b.py_start.charCodeAt(0)
-            }
-            return 0
-        })
-        const createrList = data.filter((item: GroupMemberInfoElem) => {
-            return item.role === 'owner'
-        })
-        const memberList = data.filter((item: GroupMemberInfoElem) => {
-            return item.role !== 'admin' && item.role !== 'owner'
-        })
-        memberList.sort((a, b) => {
-            if (a.py_start && b.py_start) {
-                return a.py_start.charCodeAt(0) - b.py_start.charCodeAt(0)
-            }
-            return 0
-            // return a.user_id - b.user_id
-        })
-        // 拼接列表
-        const back = createrList.concat(adminList.concat(memberList))
-        chatStore.chatInfo.info.group_members = back
+        sortAndSaveMembers()
+
+        if (!isPinyinReady()) {
+            void ensurePinyinLoaded().then((loaded) => {
+                if (!loaded) return
+                data.forEach((item: any) => {
+                    let name: string
+                    if (item.card != undefined && item.card != '') {
+                        name = item.card
+                    } else if (item.nickname != undefined && item.nickname != '') {
+                        name = item.nickname
+                    } else {
+                        name = item.user_id.toString()
+                    }
+                    item.py_start = resolvePinyinFirstChar(name.substring(0, 1))
+                })
+                sortAndSaveMembers()
+            })
+        }
     },
 
     /**
@@ -1320,20 +1407,9 @@ function saveUser(msg: { [key: string]: any }, type: string) {
             if (item.group_name == null || item.group_name == undefined) {
                 item.group_name = ''
             }
-            // 为所有项目追加拼音名称
-            let pyMatchName = ''
-            if (item.group_id) {
-                pyMatchName = item.group_name
-            } else {
-                pyMatchName = `${item.nickname},${item.remark}`
-            }
             if (list?.[index]) {
-                list[index].py_name = getPinyin(pyMatchName)
-                list[index].py_start = list[index]
-                    .py_name
-                    .main.at(0)
-                    ?.substring(0, 1)
-                    .toUpperCase() ?? ' '
+                list[index].py_name = { main: [], short: [] }
+                list[index].py_start = ' '
             }
             // 构建分类
             if (type == 'friend') {
@@ -1364,13 +1440,12 @@ function saveUser(msg: { [key: string]: any }, type: string) {
             }
             saveClassInfo(groupNamesList)
         }
-        // 按照首字母排序
-        list.sort((a, b) => {
-            if (a.py_start && b.py_start) {
-                return a.py_start.charCodeAt(0) - b.py_start.charCodeAt(0)
-            }
-            return 0
-        })
+        if (isPinyinReady()) {
+            buildPinyinForContacts(list)
+        } else {
+            hydrateContactPinyinLater(list)
+        }
+        sortContactListByPinyin(list)
         contactStore.userList = contactStore.userList.concat(list)
         if (settingsStore.sysConfig.session_display_mode === 'all') {
             updateBaseOnMsgList()
