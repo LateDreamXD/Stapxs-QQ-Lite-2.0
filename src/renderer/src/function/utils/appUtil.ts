@@ -587,6 +587,8 @@ export async function loadMobile() {
         backend.addListener('Keyboard', 'keyboardWillShow', async (info: KeyboardInfo) => {
             const keyboardHeight = info.keyboardHeight
 
+            console.log('键盘高度：', keyboardHeight)
+
             // 调整输入框高度
             const sendMore = document.getElementById('send-more')
             if (sendMore && keyboardHeight > window.innerHeight / 3) {
@@ -613,10 +615,10 @@ export async function loadMobile() {
 
             // 调整整个 HTML 的高度
             // PS：仅用于解决 Android 在全屏沉浸式下键盘遮挡问题
-            const html = document.getElementsByTagName('html')[0]
-            if (html && backend.platform == 'android') {
-                html.style.height = `calc(100% - ${keyboardHeight + safeArea.top}px)`
-            }
+            // const html = document.getElementsByTagName('html')[0]
+            // if (html && backend.platform == 'android') {
+            //     html.style.height = `calc(100% - ${keyboardHeight + safeArea.top}px)`
+            // }
         })
         backend.addListener('Keyboard', 'keyboardWillHide', async () => {
             const sendMore = document.getElementById('send-more')
