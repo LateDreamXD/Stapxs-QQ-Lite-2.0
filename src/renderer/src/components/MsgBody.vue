@@ -1099,11 +1099,13 @@ function getMdHTML(str: string, id: string) {
         }
     }
 
-    const body = document.getElementById(id)
-    if(body) {
-        body.innerHTML = ''
-        body.appendChild(div)
-    }
+    setTimeout(() => {
+        const body = document.getElementById(id)
+        if(body) {
+            body.innerHTML = ''
+            body.appendChild(div)
+        }
+    }, 500)
 
     return id
 }
