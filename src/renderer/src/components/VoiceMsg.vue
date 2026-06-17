@@ -244,13 +244,11 @@ async function buildSpectrumBars() {
         try {
             spectrumBars.value = await analyzeBufferSpectrum(decodedBuffer, count)
         } catch (error) {
-            console.warn('频谱分析失败，回退到波形采样', error)
             spectrumBars.value = buildWaveFallback(decodedBuffer, count)
         }
 
         hasSpectrumData.value = true
     } catch (error) {
-        console.warn('语音频谱构建失败', error)
         if (currentToken === spectrumBuildToken) {
             spectrumBars.value = createPlaceholderSpectrumBars(count)
             hasSpectrumData.value = false
