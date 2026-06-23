@@ -47,7 +47,7 @@ export function ensurePinyinLoaded(): Promise<boolean> {
     if (typeof window === 'undefined' || typeof document === 'undefined') {
         return Promise.resolve(false)
     }
-    if (pinyinLoadPromise) return pinyinLoadPromise
+    if (pinyinLoadPromise !== null) return pinyinLoadPromise
 
     pinyinLoadPromise = new Promise((resolve) => {
         let script = document.querySelector(
