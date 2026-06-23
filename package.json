@@ -1,6 +1,6 @@
 {
   "name": "stapxs-qq-lite",
-  "version": "3.4.0",
+  "version": "3.4.1",
   "author": "Stapx Steve [林槐]",
   "description": "一个兼容 OneBot 协议的非官方 QQ 全平台客户端实现。",
   "homepage": "http://github.com/Stapxs/Stapxs-QQ-Lite-2.0",
@@ -14,7 +14,7 @@
     "check": "yarn lint && yarn typecheck",
     "lint:tauri": "cargo check --manifest-path src/tauri/Cargo.toml",
     "update:icon": "npx @capacitor/assets generate --assetPath 'src/mobile/_assets' --iosProject 'src/mobile/ios/App' --androidProject 'src/mobile/android' --android --ios",
-    "update:version": "npx @stapxs/capacitor-sync-version android ios",
+    "update:version": "node ./scripts/update-version.cjs android ios",
     "dev": "vite dev",
     "dev:electron": "cross-env DESKTOP=1 electron-vite dev",
     "dev:tauri": "cross-env DESKTOP=1 tauri dev -c src/tauri/tauri.conf.json",

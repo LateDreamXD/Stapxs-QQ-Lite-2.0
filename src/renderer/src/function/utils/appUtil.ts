@@ -587,6 +587,8 @@ export async function loadMobile() {
         backend.addListener('Keyboard', 'keyboardWillShow', async (info: KeyboardInfo) => {
             const keyboardHeight = info.keyboardHeight
 
+            console.log('键盘高度：', keyboardHeight)
+
             // 调整输入框高度
             const sendMore = document.getElementById('send-more')
             if (sendMore && keyboardHeight > window.innerHeight / 3) {
@@ -613,10 +615,10 @@ export async function loadMobile() {
 
             // 调整整个 HTML 的高度
             // PS：仅用于解决 Android 在全屏沉浸式下键盘遮挡问题
-            const html = document.getElementsByTagName('html')[0]
-            if (html && backend.platform == 'android') {
-                html.style.height = `calc(100% - ${keyboardHeight + safeArea.top}px)`
-            }
+            // const html = document.getElementsByTagName('html')[0]
+            // if (html && backend.platform == 'android') {
+            //     html.style.height = `calc(100% - ${keyboardHeight + safeArea.top}px)`
+            // }
         })
         backend.addListener('Keyboard', 'keyboardWillHide', async () => {
             const sendMore = document.getElementById('send-more')
@@ -1207,6 +1209,8 @@ export function loadJsonMap(name: string) {
                     msgPath = newMsgPath
                     logger.system('非常抱歉开发者，已帮阁下将映射表重定向加载为 ：' + msgPath?.name + ' （慌张）')
                 }
+            } else {
+                logger.system('开发者，没有找到你需要的映射表……')
             }
             const authStore = useAuthStore()
             authStore.jsonMap = msgPath
@@ -1221,8 +1225,52 @@ export function loadJsonMap(name: string) {
 * UM：上报事件
 * @param event 事件名
 * @param data 数据
+* @param saveLocal 是否额外保存到前端 localStorage
 */
-export function sendStatEvent(event: string, data: { [key: string]: any }) {
+export interface LocalStatEventRecord {
+    event: string
+    data: { [key: string]: any }
+    time: number
+}
+
+export const LOCAL_STAT_EVENT_STORAGE_KEY = 'local_umami_stat_events'
+const LOCAL_STAT_EVENT_MAX_COUNT = 500
+
+function getBrowserLocalStatEvents(): LocalStatEventRecord[] {
+    try {
+        const storage = globalThis.localStorage
+        const raw = storage.getItem(LOCAL_STAT_EVENT_STORAGE_KEY)
+        if (!raw) return []
+        const parsed = JSON.parse(raw)
+        return Array.isArray(parsed) ? parsed : []
+    } catch {
+        return []
+    }
+}
+
+function saveBrowserLocalStatEvent(record: LocalStatEventRecord): void {
+    try {
+        const storage = globalThis.localStorage
+        const list = getBrowserLocalStatEvents()
+        list.push(record)
+        if (list.length > LOCAL_STAT_EVENT_MAX_COUNT) {
+            list.splice(0, list.length - LOCAL_STAT_EVENT_MAX_COUNT)
+        }
+        storage.setItem(LOCAL_STAT_EVENT_STORAGE_KEY, JSON.stringify(list))
+    } catch {
+        // ignore local cache failures
+    }
+}
+
+export function sendStatEvent(event: string, data: { [key: string]: any }, saveLocal = false) {
+    if (saveLocal) {
+        saveBrowserLocalStatEvent({
+            event,
+            data,
+            time: Date.now(),
+        })
+    }
+
     if (!option.get('close_ga') && !import.meta.env.DEV) {
         Umami.trackEvent(event, data)
     }

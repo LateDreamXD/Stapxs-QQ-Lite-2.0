@@ -23,6 +23,7 @@ import {
     getMsgData,
     parseMsgList,
     getMsgRawTxt,
+    updateBaseOnMsgList,
     updateLastestHistory,
     sendMsgAppendInfo,
 } from '@renderer/function/utils/msgUtil'
@@ -57,7 +58,7 @@ import { dbRevokeMessage, saveMessagesWithSideEffects } from './utils/localHisto
 import { addDownloadTask, completeUploadTask } from '@renderer/components/FileManager.vue'
 import { refreshFavicon } from './favicon'
 import { Img } from './model/img'
-import { getPinyin } from './utils/pinyin'
+import { ensurePinyinLoaded, getPinyin, isPinyinReady } from './utils/pinyin'
 import { useAuthStore } from '@renderer/state/auth'
 import { useContactStore } from '@renderer/state/contact'
 import { useChatStore } from '@renderer/state/chat'
@@ -95,6 +96,80 @@ export function clearLoginWaveTimer() {
     }
 }
 
+function resolveContactPinyinName(item: UserFriendElem | UserGroupElem) {
+    if ((item as UserFriendElem).group_id) {
+        return (item as UserFriendElem).group_name ?? ''
+    }
+    return `${(item as UserGroupElem).nickname ?? ''},${(item as UserGroupElem).remark ?? ''}`
+}
+
+function resolvePinyinFirstChar(value: string) {
+    return getPinyin(value)
+        .main
+        .at(0)
+        ?.substring(0, 1)
+        .toUpperCase() ?? ' '
+}
+
+function sortContactListByPinyin<T extends UserFriendElem | UserGroupElem>(list: T[]) {
+    list.sort((a, b) => {
+        if (a.py_start && b.py_start) {
+            return a.py_start.charCodeAt(0) - b.py_start.charCodeAt(0)
+        }
+        return 0
+    })
+}
+
+function buildPinyinForContacts(
+    list: (UserFriendElem | UserGroupElem)[],
+    startIndex = 0,
+    onDone?: () => void,
+) {
+    if (!isPinyinReady()) {
+        onDone?.()
+        return
+    }
+
+    const batchSize = 100
+    const endIndex = Math.min(startIndex + batchSize, list.length)
+
+    for (let index = startIndex; index < endIndex; index++) {
+        const item = list[index]
+        item.py_name = getPinyin(resolveContactPinyinName(item))
+        item.py_start = item.py_name.main.at(0)?.substring(0, 1).toUpperCase() ?? ' '
+    }
+
+    if (endIndex >= list.length) {
+        onDone?.()
+        return
+    }
+
+    setTimeout(() => {
+        buildPinyinForContacts(list, endIndex, onDone)
+    }, 0)
+}
+
+function hydrateContactPinyinLater(list: (UserFriendElem | UserGroupElem)[]) {
+    const contactStore = useContactStore()
+
+    const applyHydration = () => {
+        buildPinyinForContacts(list, 0, () => {
+            sortContactListByPinyin(list)
+            contactStore.userList = [...contactStore.userList]
+        })
+    }
+
+    if (isPinyinReady()) {
+        applyHydration()
+        return
+    }
+
+    void ensurePinyinLoaded().then((loaded) => {
+        if (!loaded) return
+        applyHydration()
+    })
+}
+
 function clearMetaEventWatchdog() {
     const connectionStore = useConnectionStore()
     if (connectionStore.metaEventWatchTimer) {
@@ -117,9 +192,9 @@ function refreshMetaEventWatchdog(interval: number) {
         if (connectionStore.metaEventTimeoutTriggered) return
         connectionStore.metaEventTimeoutTriggered = true
         connectionStore.metaEventWatchTimer = undefined
-        logger.add(LogType.WS, 'meta_event 超时，连续两个心跳周期未收到心跳，准备断开连接')
-        Connector.forceDisconnect('meta_event timeout')
-    }, interval * 2000)
+        logger.add(LogType.WS, '心跳包超时，准备断开连接')
+        Connector.forceDisconnect('心跳包超时')
+    }, interval * 1000)
 }
 
 export function dispatch(raw: string | { [k: string]: any }, echo?: string) {
@@ -407,10 +482,16 @@ const noticeFunctions = {
         const chatStore = useChatStore()
         const sender = msg.user_id
         if (chatStore.chatInfo.show.id == sender) {
-            chatStore.chatInfo.show.appendInfo = $t('对方正在输入……')
-            setTimeout(() => {
+            // 使用客户端返回的具体状态文本
+            if (msg.status_text) {
+                chatStore.chatInfo.show.appendInfo = $t(msg.status_text)
+                setTimeout(() => {
+                    chatStore.chatInfo.show.appendInfo = undefined
+                }, 10000)
+            } else {
+                // 对方停止输入时，会有一个空的 input_status 消息
                 chatStore.chatInfo.show.appendInfo = undefined
-            }, 10000)
+            }
         }
     },
 } as { [key: string]: (name: string, msg: { [key: string]: any }) => void }
@@ -599,6 +680,31 @@ const msgFunctions = {
     getGroupMemberList: (_: string, msg: { [key: string]: any }) => {
         const chatStore = useChatStore()
         const data = msg.data as GroupMemberInfoElem[]
+        const sortAndSaveMembers = () => {
+            const adminList = data.filter((item: GroupMemberInfoElem) => {
+                return item.role === 'admin'
+            })
+            adminList.sort((a, b) => {
+                if (a.py_start && b.py_start) {
+                    return a.py_start.charCodeAt(0) - b.py_start.charCodeAt(0)
+                }
+                return 0
+            })
+            const createrList = data.filter((item: GroupMemberInfoElem) => {
+                return item.role === 'owner'
+            })
+            const memberList = data.filter((item: GroupMemberInfoElem) => {
+                return item.role !== 'admin' && item.role !== 'owner'
+            })
+            memberList.sort((a, b) => {
+                if (a.py_start && b.py_start) {
+                    return a.py_start.charCodeAt(0) - b.py_start.charCodeAt(0)
+                }
+                return 0
+            })
+            chatStore.chatInfo.info.group_members = createrList.concat(adminList.concat(memberList))
+        }
+
         data.forEach((item: any) => {
             let name: string
             if (item.card != undefined && item.card != '') {
@@ -610,39 +716,27 @@ const msgFunctions = {
             }
 
             // 获取拼音首字母
-            const first = name.substring(0, 1)
-            item.py_start = getPinyin(first)
-                .main
-                .at(0)
-                ?.substring(0, 1)
-                .toUpperCase() ?? ' '
+            item.py_start = resolvePinyinFirstChar(name.substring(0, 1))
         })
-        // 筛选列表
-        const adminList = data.filter((item: GroupMemberInfoElem) => {
-            return item.role === 'admin'
-        })
-        adminList.sort((a, b) => {
-            if (a.py_start && b.py_start) {
-                return a.py_start.charCodeAt(0) - b.py_start.charCodeAt(0)
-            }
-            return 0
-        })
-        const createrList = data.filter((item: GroupMemberInfoElem) => {
-            return item.role === 'owner'
-        })
-        const memberList = data.filter((item: GroupMemberInfoElem) => {
-            return item.role !== 'admin' && item.role !== 'owner'
-        })
-        memberList.sort((a, b) => {
-            if (a.py_start && b.py_start) {
-                return a.py_start.charCodeAt(0) - b.py_start.charCodeAt(0)
-            }
-            return 0
-            // return a.user_id - b.user_id
-        })
-        // 拼接列表
-        const back = createrList.concat(adminList.concat(memberList))
-        chatStore.chatInfo.info.group_members = back
+        sortAndSaveMembers()
+
+        if (!isPinyinReady()) {
+            void ensurePinyinLoaded().then((loaded) => {
+                if (!loaded) return
+                data.forEach((item: any) => {
+                    let name: string
+                    if (item.card != undefined && item.card != '') {
+                        name = item.card
+                    } else if (item.nickname != undefined && item.nickname != '') {
+                        name = item.nickname
+                    } else {
+                        name = item.user_id.toString()
+                    }
+                    item.py_start = resolvePinyinFirstChar(name.substring(0, 1))
+                })
+                sortAndSaveMembers()
+            })
+        }
     },
 
     /**
@@ -734,13 +828,10 @@ const msgFunctions = {
                         msgPath.message_list.type,
                         msgPath.message_value,
                     )
-                    const raw = getMsgRawTxt(list[0])
-                    const { time } = list[0]
                     // 更新消息列表
                     const onmsg = contactStore.baseOnMsgList.get(Number(id))
                     if (onmsg) {
-                        onmsg.raw_msg = raw
-                        onmsg.time = getViewTime(Number(time))
+                        Object.assign(onmsg, formatMessageData(list[0], Boolean(onmsg.group_id)))
                         contactStore.baseOnMsgList.set(id, onmsg)
                     }
                 }
@@ -1322,20 +1413,9 @@ function saveUser(msg: { [key: string]: any }, type: string) {
             if (item.group_name == null || item.group_name == undefined) {
                 item.group_name = ''
             }
-            // 为所有项目追加拼音名称
-            let pyMatchName = ''
-            if (item.group_id) {
-                pyMatchName = item.group_name
-            } else {
-                pyMatchName = `${item.nickname},${item.remark}`
-            }
             if (list?.[index]) {
-                list[index].py_name = getPinyin(pyMatchName)
-                list[index].py_start = list[index]
-                    .py_name
-                    .main.at(0)
-                    ?.substring(0, 1)
-                    .toUpperCase() ?? ' '
+                list[index].py_name = { main: [], short: [] }
+                list[index].py_start = ' '
             }
             // 构建分类
             if (type == 'friend') {
@@ -1366,14 +1446,16 @@ function saveUser(msg: { [key: string]: any }, type: string) {
             }
             saveClassInfo(groupNamesList)
         }
-        // 按照首字母排序
-        list.sort((a, b) => {
-            if (a.py_start && b.py_start) {
-                return a.py_start.charCodeAt(0) - b.py_start.charCodeAt(0)
-            }
-            return 0
-        })
+        if (isPinyinReady()) {
+            buildPinyinForContacts(list)
+        } else {
+            hydrateContactPinyinLater(list)
+        }
+        sortContactListByPinyin(list)
         contactStore.userList = contactStore.userList.concat(list)
+        if (settingsStore.sysConfig.session_display_mode === 'all') {
+            updateBaseOnMsgList()
+        }
         // 刷新置顶列表
         const info = settingsStore.sysConfig.top_info as {
             [key: string]: number[]
@@ -1562,6 +1644,57 @@ async function saveMsg(msg: any, append = undefined as undefined | string) {
 async function normalizeMessagesFromPayload(payload: any): Promise<any[] | undefined> {
     const rawList = getMsgData('message_list', payload, msgPath.message_list)
     return getMessageList(rawList)
+}
+
+export async function normalizeMessagesForPreview(payload: any): Promise<any[]> {
+    const authStore = useAuthStore()
+    const map = authStore.jsonMap
+
+    if (
+        payload &&
+        payload.post_type === 'message' &&
+        Array.isArray(payload.message)
+    ) {
+        const directList = parseMsgList(
+            [payload],
+            map?.message_list?.type ?? '$',
+            map?.message_value,
+        )
+
+        if (directList.length === 0) return []
+        return Promise.all(directList.map(msgPreprocess))
+    }
+
+    if (!map?.message_list) return []
+
+    let rawList = getMsgData('message_list', payload, map.message_list)
+    if (rawList == undefined) {
+        rawList = getMsgData(
+            'message_list',
+            buildMsgList([payload]),
+            map.message_list,
+        )
+    }
+    if (rawList == undefined) return []
+
+    const list = parseMsgList(
+        rawList,
+        map.message_list.type,
+        map.message_value,
+    )
+    if (list.length === 0) return []
+
+    if (map.message_list.order === 'reverse') {
+        list.reverse()
+    }
+
+    list.forEach((item: any) => {
+        if (!item.post_type) {
+            item.post_type = 'message'
+        }
+    })
+
+    return Promise.all(list.map(msgPreprocess))
 }
 
 function normalizeNewIncomingMessage(data: any): any[] {
@@ -1970,60 +2103,78 @@ function newMsg(_: string, data: any) {
             }
         }
 
-        // 群收纳箱 ============================================
-        if (settingsStore.sysConfig.bubble_sort_user) {
-            // 刷新群收纳箱列表
-            let getGroup = contactStore.baseOnMsgList.get(Number(id))
-            // ( 如果 是群组消息 && 群组没有开启通知 && 不是置顶的 ) 这种情况下将群消息添加到群收纳盒中
-            if (!getGroup) {
-                const getList = contactStore.userList.filter((item) => {
-                    return item.group_id === id
+        const isGroupMessage = data.message_type === 'group'
+        const isTempGroupMessage = data.sub_type === 'group'
+        const groupNoticeType = settingsStore.sysConfig.group_notice_type
+        const hasForcedGroupInnerNotice = data.atme || data.atall || isImportant || isGroupNotice
+        const allowGroupInnerNotice = !isGroupMessage ||
+            groupNoticeType !== 'none' ||
+            hasForcedGroupInnerNotice
+        const allowGroupSystemNotice = !isGroupMessage ||
+            groupNoticeType === 'all' ||
+            hasForcedGroupInnerNotice
+
+        // 会话状态更新 ============================================
+        const sessionId = Number(isTempGroupMessage ? sender : id)
+        let session = contactStore.baseOnMsgList.get(sessionId)
+        if (!session) {
+            if (isTempGroupMessage) {
+                session = {
+                    user_id: sender,
+                    nickname: app.config.globalProperties.$t('临时会话'),
+                    remark: data.sender.user_id,
+                    group_id: data.sender.group_id,
+                    group_name: '',
+                } as UserFriendElem & UserGroupElem
+            } else {
+                session = contactStore.userList.find((item) => {
+                    return item.user_id === id || item.group_id === id
                 })
-                getGroup = getList[0]
-            }
-            if (getGroup) {
-                getGroup.message_id = data.message_id
-                const name = data.sender.card && data.sender.card !== '' ? data.sender.card : data.sender.nickname
-                getGroup.raw_msg = name + ': ' + getMsgRawTxt(data)
-                getGroup.raw_msg_base = getMsgRawTxt(data)
-                getGroup.time = getViewTime(Number(data.time))
-                contactStore.baseOnMsgList.set(Number(id), getGroup)
             }
         }
-
-        const get = [...contactStore.baseOnMsgList.keys()].filter((item) => {
-            return (
-                Number(id) === item || Number(info.target_id) === item
-            )
-        })
+        if (session) {
+            Object.assign(session, formatMessageData(data, isGroupMessage))
+            if (
+                sender != loginId &&
+                sender != 0 &&
+                sessionId !== showId &&
+                allowGroupInnerNotice
+            ) {
+                if (!session.new_msg) {
+                    session.new_msg = true
+                    contactStore.newMsgCount++
+                }
+            }
+            if (sessionId !== showId && allowGroupInnerNotice) {
+                if (data.atme) { session.highlight = $t('[有人@你]') }
+                if (data.atall) { session.highlight = $t('[@全体]') }
+                if (isImportant) { session.highlight = $t('[特別关心]') }
+            }
+            contactStore.baseOnMsgList.set(sessionId, session)
+        }
 
         // 通知判定 ============================================
-        // eslint-disable-next-line max-len
-        // (发送者不是自己 && (在特别关心列表里 || 发送者不是群组 || 开启了群组通知模式 || 群组 AT
-        //      || 群组 AT 全体 || 群组开启了通知)) 这些情况需要进行新消息处理
         if (
             sender != loginId &&
             sender != 0 &&
-            (isImportant ||
-                data.message_type !== 'group' ||
-                settingsStore.sysConfig.group_notice_type != 'none' ||
-                data.atme ||
-                data.atall ||
-                isGroupNotice)
+            allowGroupSystemNotice
         ) {
             logger.add(LogType.DEBUG, '通知判定：', {
-                notShow: id !== showId,
+                notShow: sessionId !== showId,
                 notFocus: !document.hasFocus(),
                 hidden: document.hidden,
                 isImportant: isImportant
             })
             // (发送者没有被打开 || 窗口没有焦点 || 窗口被最小化 || 在特别关心列表里) 这些情况需要进行消息通知
+            const forceGroupSystemNotice = isGroupMessage && groupNoticeType === 'all'
+            const forceImportantNotice = isImportant ||
+                (isGroupMessage && (data.atme || data.atall || isGroupNotice))
             if (
-                settingsStore.sysConfig.group_notice_type == 'all' ||
-                id !== showId ||
+                forceGroupSystemNotice ||
+                forceImportantNotice ||
+                sessionId !== showId ||
                 !document.hasFocus() ||
-                document.hidden ||
-                isImportant
+                document.hidden
             ) {
                 // 准备消息内容
                 let raw = getMsgRawTxt(data)
@@ -2043,7 +2194,7 @@ function newMsg(_: string, data: any) {
                     title: data.group_name ?? data.sender.nickname,
                     body:
                         data.message_type === 'group' ? data.sender.nickname + ':' + raw : raw,
-                    tag: `${id}/${data.message_id}`,
+                    tag: `${sessionId}/${data.message_id}`,
                     icon:
                         data.message_type === 'group' ? `https://p.qlogo.cn/gh/${id}/${id}/0` : `https://q1.qlogo.cn/g?b=qq&s=0&nk=${id}`,
                     image: undefined as any,
@@ -2060,82 +2211,6 @@ function newMsg(_: string, data: any) {
                 if (Option.get('close_notice') !== true) {
                     new Notify().notify(msgInfo)
                 }
-            }
-            // 如果发送者不在消息列表里，将它添加到消息列表里
-            if (get) {
-                // 如果消息子类是 group，那么是临时消息，需要进行特殊处理
-                if (data.sub_type === 'group') {
-                    // 手动创建一个用户信息，因为临时消息的用户不在用户列表里
-                    const user = {
-                        user_id: sender,
-                        // 因为临时消息没有返回昵称
-                        nickname: app.config.globalProperties.$t('临时会话'),
-                        remark: data.sender.user_id,
-                        new_msg: true,
-                        message_id: data.message_id,
-                        raw_msg: data.raw_message,
-                        time: data.time,
-                        group_id: data.sender.group_id,
-                        group_name: '',
-                    } as UserFriendElem & UserGroupElem
-                    contactStore.baseOnMsgList.set(Number(sender), user)
-                } else {
-                    const getList = contactStore.userList.filter((item) => {
-                        return item.user_id === id || item.group_id === id
-                    })
-
-                    const showUser = getList[0]
-                    const formatted = formatMessageData(data, data.message_type === 'group')
-                    Object.assign(showUser, formatted)
-                    contactStore.baseOnMsgList.set(Number(id), showUser)
-                }
-            }
-            if (id !== showId) {
-                const user = contactStore.baseOnMsgList.get(id)
-                if (user) {
-                    if (!user.new_msg) {
-                        user.new_msg = true
-                        contactStore.newMsgCount++
-                    }
-                    contactStore.baseOnMsgList.set(id, user)
-                }
-            }
-        }
-
-
-
-        // 消息列表 ============================================
-        // 刷新消息列表
-        if (!settingsStore.sysConfig.bubble_sort_user && data.message_type === 'group') {
-            const getList = contactStore.userList.filter((item) => {
-                return item.group_id === id
-            })
-            if (getList.length === 1) {
-                const showGroup = getList[0]
-                const formatted = formatMessageData(data, true)
-                Object.assign(showGroup, formatted)
-                contactStore.baseOnMsgList.set(Number(id), showGroup)
-            }
-        }
-        // 刷新消息
-        if (get) {
-            const item = contactStore.baseOnMsgList.get(Number(id))
-            if (item) {
-                item.message_id = data.message_id
-                if (data.message_type === 'group') {
-                    const name =
-                        data.sender.card && data.sender.card !== '' ? data.sender.card : data.sender.nickname
-                    item.raw_msg = name + ': ' + getMsgRawTxt(data)
-                } else {
-                    item.raw_msg = getMsgRawTxt(data)
-                }
-                item.time = getViewTime(Number(data.time))
-                if (id != showId) {
-                    if (data.atme) { item.highlight = $t('[有人@你]') }
-                    if (data.atall) { item.highlight = $t('[@全体]') }
-                    if (isImportant) { item.highlight = $t('[特別关心]') }
-                }
-                contactStore.baseOnMsgList.set(Number(id), item)
             }
         }
     }
@@ -2165,11 +2240,11 @@ function updateSysInfo(
 // ==============================================================
 
 function formatMessageData(data: any, isGroup: boolean) {
-    const name = data.sender.card && data.sender.card !== '' ? data.sender.card : data.sender.nickname
+    const name = data.sender?.card && data.sender.card !== '' ? data.sender.card : data.sender?.nickname
 
     return {
         message_id: data.message_id,
-        raw_msg: isGroup ? `${name}: ${getMsgRawTxt(data)}` : getMsgRawTxt(data),
+        raw_msg: isGroup && name ? `${name}: ${getMsgRawTxt(data)}` : getMsgRawTxt(data),
         time: getViewTime(Number(data.time)),
         raw_msg_base: getMsgRawTxt(data)
     }

@@ -24,7 +24,10 @@
                         :key="'delete-' + msgIndex.message_id"
                         :data="{ sub_type: 'delete' }" />
                     <!-- 合并转发消息忽略是不是自己的判定 -->
-                    <MsgBody :data="msgIndex" :type="'merge'" />
+                    <MsgBody
+                        :data="msgIndex"
+                        :type="'merge'"
+                        :image-list-header="mergeImgHead" />
                 </template>
             </TransitionGroup>
         </div>
@@ -33,11 +36,12 @@
 
 <script setup lang="ts">
     import { v4 as uuid } from 'uuid'
-    import { ref, watch, onMounted } from 'vue'
+    import { computed, ref, watch, onMounted } from 'vue'
 
     import MsgBody from '@renderer/components/MsgBody.vue'
     import NoticeBody from '@renderer/components/NoticeBody.vue'
 
+    import { Img } from '@renderer/function/model/img'
     import { i18n } from '@renderer/main'
     import { useSettingsStore } from '@renderer/state/settings'
     import { type MergeStackData } from '@renderer/function/elements/information'
@@ -52,6 +56,9 @@
     const settingsStore = useSettingsStore()
     const stack = chatStore.mergeMsgStack
     const nowData = ref<MergeStackData | undefined>()
+    const mergeImgHead = computed(() =>
+        Img.fromList((nowData.value?.imageList ?? []).map(item => item.img_url))
+    )
 
     /**
      * 退出一层合并转发弹窗

@@ -11,6 +11,18 @@
     fill: var(--color-font-1-r);
 }
 
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 .opt-main {
     overflow: hidden;
     background: var(--color-bg);
@@ -340,6 +352,13 @@
     display: flex;
     flex: 1;
 }
+.opt-item > div > label {
+    cursor: pointer;
+}
+.opt-item > div > span:first-child,
+.opt-item > div > label:first-child {
+    font-size: 0.85rem;
+}
 .opt-item > div:first-child {
     transition: all 0.3s;
     border-radius: 5px;
@@ -385,12 +404,14 @@
     font-size: 0.8rem;
 }
 
-.opt-item > div > span:last-child {
+.opt-item > div > span:last-child,
+.opt-item > div > label:last-child {
     color: var(--color-font-1);
     text-overflow: clip;
     font-size: 0.8rem;
 }
-.opt-item > div > span:last-child > a {
+.opt-item > div > span:last-child > a,
+.opt-item > div > label:last-child > a {
     color: var(--color-font-1);
     font-size: 0.8rem;
 }

@@ -2974,6 +2974,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
  "cc",
+ "openssl-sys",
  "pkg-config",
  "vcpkg",
 ]
@@ -3273,10 +3274,10 @@ dependencies = [
  "libc",
  "log",
  "openssl",
- "openssl-probe",
+ "openssl-probe 0.1.6",
  "openssl-sys",
  "schannel",
- "security-framework",
+ "security-framework 2.11.1",
  "security-framework-sys",
  "tempfile",
 ]
@@ -3868,6 +3869,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d05e27ee213611ffe7d6348b942e8f942b37114c00cc03cec254295a4a17852e"
 
 [[package]]
+name = "openssl-probe"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
+
+[[package]]
+name = "openssl-src"
+version = "300.5.1+3.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "735230c832b28c000e3bc117119e6466a663ec73506bc0a9907ea4187508e42a"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "openssl-sys"
 version = "0.9.111"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3875,6 +3891,7 @@ checksum = "82cab2d520aa75e3c58898289429321eb788c3106963d0dc886ec7a5f4adc321"
 dependencies = [
  "cc",
  "libc",
+ "openssl-src",
  "pkg-config",
  "vcpkg",
 ]
@@ -4877,6 +4894,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustls-native-certs"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dab5152771c58876a2146916e53e35057e1a4dfa2b9df0f0305b07f611fdea4d"
+dependencies = [
+ "openssl-probe 0.2.1",
+ "rustls-pki-types",
+ "schannel",
+ "security-framework 3.5.1",
+]
+
+[[package]]
 name = "rustls-pki-types"
 version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5017,6 +5046,19 @@ checksum = "897b2245f0b511c87893af39b033e5ca9cce68824c4d7e7630b5a1d339658d02"
 dependencies = [
  "bitflags 2.10.0",
  "core-foundation 0.9.4",
+ "core-foundation-sys",
+ "libc",
+ "security-framework-sys",
+]
+
+[[package]]
+name = "security-framework"
+version = "3.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3297343eaf830f66ede390ea39da1d462b6b0c1b000f420d0a83f898bbbe6ef"
+dependencies = [
+ "bitflags 2.10.0",
+ "core-foundation 0.10.1",
  "core-foundation-sys",
  "libc",
  "security-framework-sys",
@@ -5459,7 +5501,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "stapxs-qq-lite"
-version = "3.4.0"
+version = "3.4.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -5479,7 +5521,7 @@ dependencies = [
  "rusqlite",
  "rustls",
  "secret-service",
- "security-framework",
+ "security-framework 2.11.1",
  "serde",
  "serde_json",
  "tauri",
@@ -6289,11 +6331,11 @@ dependencies = [
  "futures-util",
  "log",
  "rustls",
+ "rustls-native-certs",
  "rustls-pki-types",
  "tokio",
  "tokio-rustls",
  "tungstenite 0.26.2",
- "webpki-roots 0.26.11",
 ]
 
 [[package]]
@@ -7077,24 +7119,6 @@ dependencies = [
  "pkg-config",
  "soup3-sys",
  "system-deps",
-]
-
-[[package]]
-name = "webpki-roots"
-version = "0.26.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
-dependencies = [
- "webpki-roots 1.0.4",
-]
-
-[[package]]
-name = "webpki-roots"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2878ef029c47c6e8cf779119f20fcf52bde7ad42a731b2a304bc221df17571e"
-dependencies = [
- "rustls-pki-types",
 ]
 
 [[package]]

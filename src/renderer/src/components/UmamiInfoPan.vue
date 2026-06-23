@@ -48,7 +48,9 @@
                 </div>
                 <div class="time-select">
                     <div>
-                        <select v-model="timeType" :disabled="loading" @change="changeTime">
+                        <label for="umami-time-select-detail" class="sr-only">{{ $t('选择统计时间范围') }}</label>
+                        <select id="umami-time-select-detail" v-model="timeType" :disabled="loading"
+                            @change="changeTime">
                             <option value="1">
                                 {{ $t('最近 24 小时') }}
                             </option>
@@ -69,8 +71,9 @@
                 </div>
                 <div v-if="showName === 'session'" class="only-valid-data">
                     <span>{{ $t('仅有效数据') }}</span>
+                    <label for="umami-only-valid-data" class="sr-only">{{ $t('仅有效数据') }}</label>
                     <label class="ss-switch">
-                        <input v-model="onlyValidData" :disabled="loading"
+                        <input id="umami-only-valid-data" v-model="onlyValidData" :disabled="loading"
                             type="checkbox"
                             @change="changeTime">
                         <div>
@@ -91,7 +94,9 @@
                         <v-chart :option="visitData.pageviewChart" style="width: 100%;height: 100%;" autoresize />
                         <div class="time-select overview-time-select">
                             <div>
-                                <select v-model="timeType" :disabled="loading" @change="changeTime">
+                                <label for="umami-time-select-overview" class="sr-only">{{ $t('选择统计时间范围') }}</label>
+                                <select id="umami-time-select-overview" v-model="timeType" :disabled="loading"
+                                    @change="changeTime">
                                     <option value="1">
                                         {{ $t('最近 24 小时') }}
                                     </option>

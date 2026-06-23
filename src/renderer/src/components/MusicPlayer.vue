@@ -12,6 +12,7 @@
                     @error="audioLoadFail"
                     @timeupdate="audioUpdate()" />
                 <div>
+                    <label for="music-controller-bar" class="sr-only">{{ $t('音乐播放进度') }}</label>
                     <input id="music-controller-bar" value="0" min="0"
                         :max="sizeMax" step="0.1" type="range"
                         @input="audioChange">
@@ -185,11 +186,13 @@
 
 <script setup lang="ts">
     import { computed, onMounted, ref } from 'vue'
+    import { i18n } from '@renderer/main'
     import { backend } from '@renderer/runtime/backend'
     import { registerExtraOptionCard, registerExtraOptionItem } from '@renderer/function/option'
     import { useSettingsStore } from '@renderer/state/settings'
 
     const settingsStore = useSettingsStore()
+    const $t = i18n.global.t
 
     const audio = audoState
 

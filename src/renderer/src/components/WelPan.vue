@@ -27,7 +27,9 @@
             <font-awesome-icon style="margin-right: 30px" :icon="['fas', 'language']" />
             <div style="overflow: hidden">
                 <div class="select-wrapper">
-                    <select v-model="settingsStore.sysConfig.language"
+                    <label for="wel-language" class="sr-only">{{ $t('语言（Language）') }}</label>
+                    <select id="wel-language"
+                        v-model="settingsStore.sysConfig.language"
                         name="language"
                         title="language"
                         @change="save($event);gaLanguage($event)">
@@ -143,7 +145,7 @@
             </div>
             <div>
                 <span>{{ $t('群收纳盒') }}</span>
-                <a>{{ $t('群收纳盒将所有的群消息收进一个单独的群消息列表内并提供实时置顶新消息的功能；你可以关闭它来控制群消息的直接通知选项。') }}</a>
+                <a>{{ $t('群收纳盒将所有的群消息收进一个单独的群消息列表内并提供实时置顶新消息的功能；会话显示和群通知方式可以单独设置。') }}</a>
                 <div class="opt-item wel-opt-item">
                     <div>
                         <span>{{ $t('群收纳盒') }}</span>
@@ -157,13 +159,27 @@
                         </div>
                     </label>
                 </div>
-                <div v-if="!settingsStore.sysConfig.bubble_sort_user" class="opt-item wel-opt-item">
+                <div class="opt-item wel-opt-item">
                     <div>
-                        <span>{{ $t('群消息通知方式') }}</span>
+                        <span>{{ $t('会话显示') }}</span>
+                        <span>{{ $t('关闭时仅显示最近会话，开启后显示全部会话') }}</span>
+                    </div>
+                    <label class="ss-switch">
+                        <input :checked="settingsStore.sysConfig.session_display_mode === 'all'"
+                            type="checkbox" name="session_display_mode" @change="toggleSessionDisplay">
+                        <div>
+                            <div />
+                        </div>
+                    </label>
+                </div>
+                <div class="opt-item wel-opt-item">
+                    <div>
+                        <label for="wel-group-notice-type">{{ $t('群消息通知方式') }}</label>
                         <span>{{ $t('重要消息将始终发起应用内通知和系统通知') }}</span>
                     </div>
                     <div class="select-wrapper">
-                        <select v-model="settingsStore.sysConfig.group_notice_type" style="width: 100%;"
+                        <select id="wel-group-notice-type" v-model="settingsStore.sysConfig.group_notice_type"
+                            style="width: 100%;"
                             name="group_notice_type" title="group_notice_type" @change="save">
                             <option value="none">
                                 {{ $t('不通知（默认）') }}
@@ -356,7 +372,7 @@
     import { ref } from 'vue'
     import { i18n } from '@renderer/main'
     import languages from '@renderer/assets/l10n/_l10nconfig.json'
-    import { runASWEvent as save } from '@renderer/function/option'
+    import { runAS, runASWEvent as save } from '@renderer/function/option'
     import { openLink, sendIdentifyData } from '@renderer/function/utils/appUtil'
     import { useSettingsStore } from '@renderer/state/settings'
     import { useUIStore } from '@renderer/state/ui'
@@ -400,6 +416,11 @@
 
     function setPage(name: string) {
         show.value = name
+    }
+
+    function toggleSessionDisplay(event: Event) {
+        const sender = event.target as HTMLInputElement
+        runAS('session_display_mode', sender.checked ? 'all' : 'recent')
     }
 </script>
 

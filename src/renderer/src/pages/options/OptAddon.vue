@@ -19,11 +19,11 @@
                         <font-awesome-icon
                             :icon="item.icon || ['fas', 'robot']" />
                         <div>
-                            <span>{{ item.label }}</span>
+                            <label :for="`opt-addon-switch-${item.id}`">{{ item.label }}</label>
                             <span v-if="item.description">{{ item.description }}</span>
                         </div>
                         <label class="ss-switch">
-                            <input :checked="getItemValue(item) === true"
+                            <input :id="`opt-addon-switch-${item.id}`" :checked="getItemValue(item) === true"
                                 type="checkbox" @change="onSwitchChange($event, item)">
                             <div><div /></div>
                         </label>
@@ -32,30 +32,33 @@
                         <font-awesome-icon
                             :icon="item.icon || ['fas', 'paper-plane']" />
                         <div>
-                            <span>{{ item.label }}</span>
+                            <label :for="`opt-addon-input-${item.id}`">{{ item.label }}</label>
                             <span v-if="item.description">{{ item.description }}</span>
                         </div>
-                        <input :value="getItemValue(item) ?? ''" class="ss-input" style="width: 150px"
+                        <input :id="`opt-addon-input-${item.id}`" :value="getItemValue(item) ?? ''" class="ss-input"
+                            style="width: 150px"
                             type="text" @input="onInputChange($event, item)">
                     </template>
                     <template v-else-if="item.type === 'password'">
                         <font-awesome-icon
                             :icon="item.icon || ['fas', 'key']" />
                         <div>
-                            <span>{{ item.label }}</span>
+                            <label :for="`opt-addon-password-${item.id}`">{{ item.label }}</label>
                             <span v-if="item.description">{{ item.description }}</span>
                         </div>
-                        <input :value="getItemValue(item) ?? ''" class="ss-input" style="width: 150px"
+                        <input :id="`opt-addon-password-${item.id}`" :value="getItemValue(item) ?? ''" class="ss-input"
+                            style="width: 150px"
                             type="password" @input="onInputChange($event, item)">
                     </template>
                     <template v-else-if="item.type === 'select'">
                         <font-awesome-icon v-if="item.icon" :icon="item.icon" />
                         <div v-if="item.label || item.description">
-                            <span v-if="item.label">{{ item.label }}</span>
+                            <label v-if="item.label" :for="`opt-addon-select-${item.id}`">{{ item.label }}</label>
                             <span v-if="item.description">{{ item.description }}</span>
                         </div>
                         <div class="select-wrapper">
                             <select
+                                :id="`opt-addon-select-${item.id}`"
                                 :value="getItemValue(item) ?? (item.options?.[0]?.value ?? '')"
                                 @change="onSelectChange($event, item)">
                                 <option

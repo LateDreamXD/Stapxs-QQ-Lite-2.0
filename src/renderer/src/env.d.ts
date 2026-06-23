@@ -12,6 +12,16 @@ declare module '*.vue' {
 declare interface Window {
     moYu: any
     _AMapSecurityConfig: string | undefined
+    pinyin?: {
+        pinyin: (
+            value: string,
+            options: {
+                heteronym: boolean
+                compact: boolean
+                style: string
+            }
+        ) => string[][]
+    }
     createMap: (key: string | undefined, msgId: string, point: {
         lat: number,
         lng: number
@@ -47,16 +57,3 @@ declare module '@renderer/assets/img/qq-face/public/assets/qq_emoji/_index.json'
     }[]
     export default content
 }[]
-
-// 拼音库全局类型定义（动态加载）
-declare interface PinyinOptions {
-    heteronym?: boolean
-    compact?: boolean
-    style?: string
-}
-
-declare interface Window {
-    pinyin?: {
-        pinyin(text: string, options?: PinyinOptions): string[][]
-    }
-}

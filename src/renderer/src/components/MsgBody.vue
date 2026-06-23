@@ -106,15 +106,28 @@
                             :alt="item.summary"
                             @load="imageLoaded"
                             @error="imgLoadFail">
-                        <img v-else-if="item.type == 'image'"
-                            :title="(!item.summary || item.summary == '') ? $t('预览图片') : item.summary"
-                            :alt="$t('图片')"
-                            :class=" imgStyle(data.message.length, Number(index), isFace(item))"
-                            :src="getImgSrc(item.url)"
-                            data-type="image"
-                            @load="imageLoaded"
-                            @error="imgLoadFail"
-                            @click="imgClick(item.url)">
+                        <template v-else-if="item.type == 'image'">
+                            <div v-show="shouldShowImagePlaceholder(item, Number(index))"
+                                :title="$t('点击加载图片')"
+                                :class="imgStyle(data.message.length, Number(index), isFace(item)) + ' msg-img-placeholder'"
+                                @click="loadImage(item, Number(index))">
+                                <font-awesome-icon
+                                    :icon="['fas', imageLoading(getImageKey(Number(index), item.url)) ? 'spinner' : 'image']"
+                                    :spin="imageLoading(getImageKey(Number(index), item.url))" />
+                                <span>
+                                    {{ imageLoading(getImageKey(Number(index), item.url)) ? $t('加载中') : $t('点击加载图片') }}
+                                </span>
+                            </div>
+                            <img v-show="!shouldShowImagePlaceholder(item, Number(index))"
+                                :title="(!item.summary || item.summary == '') ? $t('预览图片') : item.summary"
+                                :alt="$t('图片')"
+                                :class=" imgStyle(data.message.length, Number(index), isFace(item))"
+                                :src="getImgSrc(item.url)"
+                                data-type="image"
+                                @load="imageLoaded"
+                                @error="imgLoadFail"
+                                @click="imgClick(item.url)">
+                        </template>
                         <template v-else-if="item.type == 'face'">
                             <EmojiFace :emoji="Emoji.get(Number(item.id))" class="msg-face" />
                         </template>
@@ -173,6 +186,12 @@
                                 现在还有不支持 video tag 的浏览器吗？
                             </video>
                         </div>
+                        <template v-else-if="item.type == 'record'">
+                            <VoiceMsg
+                                :item="item"
+                                :message-id="String(data.message_id)"
+                                :is-me="isMe" />
+                        </template>
                         <template v-else-if="item.type == 'forward'">
                             <div class="msg-raw-forward"
                                 @click="openMerge()">
@@ -198,6 +217,9 @@
                                                 </span>
                                                 <span v-else-if="msg.type == 'video'">
                                                     [{{ $t('视频') }}]
+                                                </span>
+                                                <span v-else-if="msg.type == 'record'">
+                                                    [{{ $t('语音') }}]
                                                 </span>
                                                 <span v-else-if="msg.type == 'forward'">
                                                     [{{ $t('聊天记录') }}]
@@ -406,6 +428,7 @@ import { Img } from '@renderer/function/model/img'
 import { dbGetImage, hashUrl } from '@renderer/function/utils/localHistoryUtil'
 import JsonSegComp from './msg-component/JsonSegComp.vue'
 import XmlSegComp from './msg-component/XmlSegComp.vue'
+import VoiceMsg from './VoiceMsg.vue'
 import { addMusic, MusicInfo } from './MusicPlayer.vue'
 
 type Msg = any
@@ -488,6 +511,8 @@ const senderInfo = ref(null as any)
 const trueLang = getTrueLang()
 const textIndex = ref({} as { [key: string]: number })
 const resolvedImages = ref({} as Record<string, string>)
+const manualImageLoads = ref({} as Record<string, boolean>)
+const pendingImageLoads = ref({} as Record<string, boolean>)
 
 //#endregion
 
@@ -519,17 +544,44 @@ async function loadCachedImages() {
     if (!selfId) return
     for (const seg of data.message) {
         if (seg.type !== 'image' || !seg.url) continue
-        const urlHash = await hashUrl(seg.url)
-        const cached = await dbGetImage(selfId, urlHash)
-        if (cached) {
-            resolvedImages.value[seg.url] =
-                `data:${cached.mimeType};base64,${cached.data}`
-        }
+        await loadCachedImage(seg.url)
     }
+}
+
+async function loadCachedImage(url: string) {
+    if (resolvedImages.value[url]) return resolvedImages.value[url]
+
+    const selfId = authStore.loginInfo?.uin
+    if (!selfId || !url) return undefined
+
+    const urlHash = await hashUrl(url)
+    const cached = await dbGetImage(selfId, urlHash)
+    if (cached) {
+        resolvedImages.value[url] =
+            `data:${cached.mimeType};base64,${cached.data}`
+        return resolvedImages.value[url]
+    }
+
+    return undefined
 }
 
 function getImgSrc(url: string): string {
     return resolvedImages.value[url] ?? backend.proxyUrl(url)
+}
+
+function getImageKey(index: number, url: string) {
+    return `${data.message_id}-${index}-${url}`
+}
+
+function imageLoading(key: string) {
+    return pendingImageLoads.value[key] === true
+}
+
+function shouldShowImagePlaceholder(item: { type: string, url: string }, index: number) {
+    if (item.type !== 'image') return false
+    if (settingsStore.sysConfig.opt_no_auto_load_image !== true) return false
+
+    return manualImageLoads.value[getImageKey(index, item.url)] !== true
 }
 
 function getAtClass(who: number | string) {
@@ -587,6 +639,21 @@ function imgStyle(length: number, at: number, isFace: boolean) {
 function imgClick(url: string) {
     if (viewerRef?.value && imageListHeader) {
         viewerRef.value.openBySrc(imageListHeader, url)
+    }
+}
+
+async function loadImage(item: { url: string }, index: number) {
+    const key = getImageKey(index, item.url)
+    if (manualImageLoads.value[key] || pendingImageLoads.value[key]) return
+
+    pendingImageLoads.value[key] = true
+    try {
+        if (data._from_local_db) {
+            await loadCachedImage(item.url)
+        }
+        manualImageLoads.value[key] = true
+    } finally {
+        pendingImageLoads.value[key] = false
     }
 }
 
@@ -843,6 +910,7 @@ function getMsg(message_id: string, filter: boolean = false) {
             'file',
             'json',
             'xml',
+            'forward'
         ])
         const needTextFallback = (msg.message ?? []).some((seg: any) => textFallbackTypes.has(seg?.type))
         if (needTextFallback) {
@@ -1031,11 +1099,13 @@ function getMdHTML(str: string, id: string) {
         }
     }
 
-    const body = document.getElementById(id)
-    if(body) {
-        body.innerHTML = ''
-        body.appendChild(div)
-    }
+    setTimeout(() => {
+        const body = document.getElementById(id)
+        if(body) {
+            body.innerHTML = ''
+            body.appendChild(div)
+        }
+    }, 500)
 
     return id
 }
@@ -1124,17 +1194,19 @@ onMounted(() => {
             parseText(i)
         }
     }
-    if (data._from_local_db) {
+    if (data._from_local_db && settingsStore.sysConfig.opt_no_auto_load_image !== true) {
         loadCachedImages()
-    }
-    if(isMe.value && type != 'merge') {
-        msgBodyClass.value += ' me'
     }
     if(isSuperFaceMsg()) {
         msgBodyClass.value += ' super-face'
     }
-    if(settingsStore.sysConfig.opt_ind_message === true) {
-        msgBodyClass.value += ' right'
+    if(type != 'body') {
+        if(isMe.value && type != 'merge') {
+            msgBodyClass.value += ' me'
+        }
+        if(settingsStore.sysConfig.opt_ind_message === true) {
+            msgBodyClass.value += ' right'
+        }
     }
 })
 

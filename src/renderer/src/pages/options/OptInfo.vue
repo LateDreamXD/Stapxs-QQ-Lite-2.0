@@ -17,19 +17,19 @@
                 class="opt-item">
                 <font-awesome-icon :icon="['fas', 'pen']" />
                 <div>
-                    <span>{{ $t('群聊名称') }}</span>
+                    <label for="opt-info-group-name">{{ $t('群聊名称') }}</label>
                     <span>{{ $t('"你们真是害人不浅呐你们这个群"') }}</span>
                 </div>
-                <input v-model="chatStore.chatInfo.show.name" class="ss-input"
+                <input id="opt-info-group-name" v-model="chatStore.chatInfo.show.name" class="ss-input"
                     style="width: 150px" type="text" @keyup="setGroupName">
             </div>
             <div class="opt-item">
                 <font-awesome-icon :icon="['fas', 'note-sticky']" />
                 <div>
-                    <span>{{ $t('我的群昵称') }}</span>
+                    <label for="opt-info-group-card">{{ $t('我的群昵称') }}</label>
                     <span>{{ $t('￡爺↘僞ηι慹著彡') }}</span>
                 </div>
-                <input v-model="chatStore.chatInfo.info.me_info.card" class="ss-input"
+                <input id="opt-info-group-card" v-model="chatStore.chatInfo.info.me_info.card" class="ss-input"
                     style="width: 150px" type="text" @change="setGroupCard">
             </div>
             <div class="opt-item">

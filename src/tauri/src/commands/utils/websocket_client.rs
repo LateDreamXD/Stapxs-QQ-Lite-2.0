@@ -51,7 +51,6 @@ impl WebSocketClient {
             .header("Sec-WebSocket-Key", general_purpose::STANDARD.encode(rand::random::<[u8; 16]>()))
             .header("Connection", "Upgrade")
             .header("Upgrade", "websocket")
-            .header("Sec-WebSocket-Extensions", "permessage-deflate; client_max_window_bits")
             .header("Host", host_header)
             .header("User-Agent", "stapxs-qq-lite")
             .body(())?;
@@ -121,7 +120,7 @@ impl WebSocketClient {
                         eprintln!("WebSocket error: {:?}", e);
                         if is_active_recv.swap(false, Ordering::SeqCst) {
                             let mut cb = on_close_recv.lock().unwrap();
-                            cb(CloseCode::Abnormal, Utf8Bytes::from("read error"));
+                            cb(CloseCode::Abnormal, Utf8Bytes::from(format!("read error: {e}")));
                         }
                         break;
                     }
