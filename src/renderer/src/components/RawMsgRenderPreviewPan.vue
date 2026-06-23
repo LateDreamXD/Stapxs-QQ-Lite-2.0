@@ -19,9 +19,10 @@
             </div>
         </div>
         <div class="raw-render-preview-title">
-            <span>{{ $t('原始消息') }}</span>
+            <label for="raw-render-preview-textarea">{{ $t('原始消息') }}</label>
         </div>
         <textarea
+            id="raw-render-preview-textarea"
             v-model="rawRenderPreviewText"
             class="raw-render-preview-textarea ss-input"
             @keydown.ctrl.enter.prevent="renderRawPreview" />

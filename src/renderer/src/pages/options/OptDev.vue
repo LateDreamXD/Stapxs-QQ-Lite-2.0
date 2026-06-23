@@ -17,13 +17,13 @@
             <div class="opt-item">
                 <font-awesome-icon :icon="['fas', 'clipboard-list']" />
                 <div>
-                    <span>{{ $t('消息类型') }}</span>
+                    <label for="opt-dev-msg-type">{{ $t('消息类型') }}</label>
                     <span>{{
                         $t('[CQ:faceid=1]你好啊👋，这个选项将会强制覆盖自动检测')
                     }}</span>
                 </div>
                 <div class="select-wrapper">
-                    <select v-model="settingsStore.sysConfig.msg_type"
+                    <select id="opt-dev-msg-type" v-model="settingsStore.sysConfig.msg_type"
                         name="msg_type"
                         title="msg_type"
                         @change="save">
@@ -39,13 +39,13 @@
             <div class="opt-item">
                 <font-awesome-icon :icon="['fas', 'gear']" />
                 <div>
-                    <span>{{ $t('解析配置') }}</span>
+                    <label for="opt-dev-json-map">{{ $t('解析配置') }}</label>
                     <span>{{
                         $t('不同框架之间的化学反应我们将其称之为达利园效应')
                     }}</span>
                 </div>
                 <div class="select-wrapper">
-                    <select v-model="jsonMapName" @change="changeJsonMap">
+                    <select id="opt-dev-json-map" v-model="jsonMapName" @change="changeJsonMap">
                         <option v-if="jsonMapName == ''" value="">
                             {{ $t('未连接') }}
                         </option>
@@ -63,11 +63,11 @@
                 <div :class="checkDefault('log_level')" />
                 <font-awesome-icon :icon="['fas', 'book']" />
                 <div>
-                    <span>{{ $t('日志等级') }}</span>
+                    <label for="opt-dev-log-level">{{ $t('日志等级') }}</label>
                     <span>{{ $t('ReferenceError: moYu is not defined') }}</span>
                 </div>
                 <div class="select-wrapper">
-                    <select v-model="settingsStore.sysConfig.log_level"
+                    <select id="opt-dev-log-level" v-model="settingsStore.sysConfig.log_level"
                         name="log_level" title="log_level" @change="save">
                         <option value="err">
                             {{ $t('错误') }}
@@ -88,13 +88,13 @@
                 <div :class="checkDefault('debug_msg')" />
                 <font-awesome-icon :icon="['fas', 'robot']" />
                 <div>
-                    <span>{{ $t('禁用消息渲染') }}</span>
+                    <label for="opt-dev-debug-msg">{{ $t('禁用消息渲染') }}</label>
                     <span>
                         <a style="cursor: pointer" @click="sendAbab">{{ $t('点击进行 CAPTCHA 验证') }}</a>
                     </span>
                 </div>
                 <label class="ss-switch">
-                    <input v-model="settingsStore.sysConfig.debug_msg"
+                    <input id="opt-dev-debug-msg" v-model="settingsStore.sysConfig.debug_msg"
                         type="checkbox" name="debug_msg" @change="save">
                     <div>
                         <div />
@@ -112,11 +112,13 @@
                     </span>
                 </div>
                 <input
+                    id="opt-dev-custom-css"
                     ref="cssFileInput"
                     type="file"
                     accept=".css"
                     style="display: none"
                     @change="handleCssFileUpload">
+                <label for="opt-dev-custom-css" class="sr-only">{{ $t('注入自定义样式') }}</label>
                 <button
                     style="width: 100px; font-size: 0.8rem"
                     class="ss-button"
@@ -156,19 +158,21 @@
             <div class="opt-item">
                 <font-awesome-icon :icon="['fas', 'paper-plane']" />
                 <div>
-                    <span>{{ $t('发送原始消息') }}</span>
+                    <label for="opt-dev-send-raw">{{ $t('发送原始消息') }}</label>
                     <span>{{ $t('咻 ——') }}</span>
                 </div>
-                <input v-model="ws_text" class="ss-input" style="width: 150px"
+                <input id="opt-dev-send-raw" v-model="ws_text" class="ss-input"
+                    style="width: 150px"
                     type="text" @keyup="sendTestWs">
             </div>
             <div class="opt-item">
                 <font-awesome-icon :icon="['fas', 'paper-plane']" />
                 <div>
-                    <span>{{ $t('接收原始消息') }}</span>
+                    <label for="opt-dev-parse-raw">{{ $t('接收原始消息') }}</label>
                     <span>{{ $t('咻咻 ——') }}</span>
                 </div>
-                <input v-model="parse_text" class="ss-input" style="width: 150px"
+                <input id="opt-dev-parse-raw" v-model="parse_text" class="ss-input"
+                    style="width: 150px"
                     type="text" @keyup="sendTestParse">
             </div>
             <div class="opt-item">
@@ -185,10 +189,10 @@
             <div class="opt-item">
                 <font-awesome-icon :icon="['fas', 'envelope']" />
                 <div>
-                    <span>{{ $t('应用消息测试') }}</span>
+                    <label for="opt-dev-appmsg">{{ $t('应用消息测试') }}</label>
                     <span>{{ $t('#$&*#$= ……') }}</span>
                 </div>
-                <input v-model="appmsg_text" class="ss-input"
+                <input id="opt-dev-appmsg" v-model="appmsg_text" class="ss-input"
                     style="width: 150px" type="text" @keyup="sendTestAppmsg">
             </div>
             <div v-if="dev" class="opt-item">

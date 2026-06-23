@@ -45,8 +45,10 @@
                     </div>
                     <div class="loop">
                         <font-awesome-icon :icon="['fas', 'arrows-rotate']" />
+                        <label for="chat-danmu-loop" class="sr-only">{{ $t('循环播放弹幕') }}</label>
                         <label class="ss-switch">
                             <input
+                                id="chat-danmu-loop"
                                 v-model="opt.loop"
                                 type="checkbox"
                                 checked>
@@ -60,7 +62,9 @@
                         <font-awesome-icon
                             :class="opt.speeds < 120 ? 'w' : ''"
                             :icon="['fas', 'gauge-high']" />
+                        <label for="chat-danmu-speed" class="sr-only">{{ $t('弹幕速度') }}</label>
                         <input
+                            id="chat-danmu-speed"
                             v-model="opt.speeds"
                             :style="{ 'background-size': `${opt.speeds / 8}% 100%` }"
                             type="range"
@@ -74,8 +78,9 @@
                     </div>
                 </div>
                 <div class="controller input">
+                    <label for="chat-danmu-input" class="sr-only">{{ $t('弹幕消息输入框') }}</label>
                     <input
-                        id="msgInput"
+                        id="chat-danmu-input"
                         v-model="msg"
                         class="msgInput"
                         @keyup="sendMsg"

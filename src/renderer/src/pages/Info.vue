@@ -98,7 +98,8 @@
                 class="chat-info-tab">
                 <div :name="$t('成员')">
                     <div class="search-view">
-                        <input :placeholder="$t('搜索 ……')" @input="(e: Event) => searchList(e)">
+                        <label for="info-member-search" class="sr-only">{{ $t('搜索成员') }}</label>
+                        <input id="info-member-search" :placeholder="$t('搜索 ……')" @input="(e: Event) => searchList(e)">
                     </div>
                     <RecycleScroller
                         v-slot="{ item }"
@@ -174,12 +175,12 @@
                     <div class="opt-item">
                         <font-awesome-icon :icon="['fas', 'clipboard-list']" />
                         <div>
-                            <span>{{ $t('成员昵称') }}</span>
+                            <label for="info-member-card">{{ $t('成员昵称') }}</label>
                             <span>{{
                                 $t('啊吧啊吧……')
                             }}</span>
                         </div>
-                        <input v-model="showUserConfigRaw.card"
+                        <input id="info-member-card" v-model="showUserConfigRaw.card"
                             style="width: 50%"
                             class="ss-input"
                             type="text"
@@ -188,12 +189,12 @@
                     <div v-if="chat.info.me_info.role === 'owner'" class="opt-item">
                         <font-awesome-icon :icon="['fas', 'clipboard-list']" />
                         <div>
-                            <span>{{ $t('成员头衔') }}</span>
+                            <label for="info-member-title">{{ $t('成员头衔') }}</label>
                             <span>{{
                                 $t('猪咪猪咪')
                             }}</span>
                         </div>
-                        <input v-model="showUserConfigRaw.title"
+                        <input id="info-member-title" v-model="showUserConfigRaw.title"
                             style="width: 50%"
                             class="ss-input"
                             type="text"
@@ -204,12 +205,12 @@
                         <div class="opt-item">
                             <font-awesome-icon :icon="['fas', 'clipboard-list']" />
                             <div>
-                                <span>{{ $t('禁言成员') }}</span>
+                                <label for="info-member-ban-min">{{ $t('禁言成员') }}</label>
                                 <span>{{
                                     $t('要让小猫咪不许说话几分钟呢？')
                                 }}</span>
                             </div>
-                            <input v-model="mumberInfo.banMin"
+                            <input id="info-member-ban-min" v-model="mumberInfo.banMin"
                                 style="width: 50%"
                                 class="ss-input"
                                 type="text"

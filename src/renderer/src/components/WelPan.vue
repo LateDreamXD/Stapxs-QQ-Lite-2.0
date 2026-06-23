@@ -27,7 +27,9 @@
             <font-awesome-icon style="margin-right: 30px" :icon="['fas', 'language']" />
             <div style="overflow: hidden">
                 <div class="select-wrapper">
-                    <select v-model="settingsStore.sysConfig.language"
+                    <label for="wel-language" class="sr-only">{{ $t('语言（Language）') }}</label>
+                    <select id="wel-language"
+                        v-model="settingsStore.sysConfig.language"
                         name="language"
                         title="language"
                         @change="save($event);gaLanguage($event)">
@@ -172,11 +174,12 @@
                 </div>
                 <div class="opt-item wel-opt-item">
                     <div>
-                        <span>{{ $t('群消息通知方式') }}</span>
+                        <label for="wel-group-notice-type">{{ $t('群消息通知方式') }}</label>
                         <span>{{ $t('重要消息将始终发起应用内通知和系统通知') }}</span>
                     </div>
                     <div class="select-wrapper">
-                        <select v-model="settingsStore.sysConfig.group_notice_type" style="width: 100%;"
+                        <select id="wel-group-notice-type" v-model="settingsStore.sysConfig.group_notice_type"
+                            style="width: 100%;"
                             name="group_notice_type" title="group_notice_type" @change="save">
                             <option value="none">
                                 {{ $t('不通知（默认）') }}

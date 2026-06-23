@@ -148,8 +148,9 @@
                     </div>
                 </div>
                 <a class="command-start">• </a>
+                <label for="shell-msg-input" class="sr-only">{{ $t('命令行消息输入框') }}</label>
                 <input
-                    id="msgInput"
+                    id="shell-msg-input"
                     v-model="msg"
                     @keyup="sendMsg"
                     @paste="addImg">

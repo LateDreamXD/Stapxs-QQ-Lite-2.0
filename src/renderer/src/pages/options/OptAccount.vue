@@ -30,10 +30,10 @@
                 <div class="opt-item">
                     <font-awesome-icon :icon="['fas', 'address-card']" />
                     <div>
-                        <span>{{ $t('昵称') }}</span>
+                        <label for="opt-account-nickname">{{ $t('昵称') }}</label>
                         <span>{{ $t('就只是个名字而已 ……') }}</span>
                     </div>
-                    <input v-model="authStore.loginInfo.nickname"
+                    <input id="opt-account-nickname" v-model="authStore.loginInfo.nickname"
                         class="ss-input"
                         style="width: 150px"
                         type="text"
@@ -43,10 +43,10 @@
                     class="opt-item">
                     <font-awesome-icon :icon="['fas', 'pen']" />
                     <div>
-                        <span>{{ $t('签名') }}</span>
+                        <label for="opt-account-signature">{{ $t('签名') }}</label>
                         <span>{{ $t('啊吧啊吧（智慧的眼神）') }}</span>
                     </div>
-                    <input v-model="authStore.loginInfo.info.lnick"
+                    <input id="opt-account-signature" v-model="authStore.loginInfo.info.lnick"
                         class="ss-input"
                         style="width: 150px"
                         type="text"

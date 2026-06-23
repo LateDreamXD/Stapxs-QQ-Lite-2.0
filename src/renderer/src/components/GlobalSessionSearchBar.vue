@@ -18,7 +18,9 @@
                 class="mask-background"
                 @click.stop.prevent="close">
                 <div ref="content" class="global-session-search-bar ss-card">
+                    <label for="global-session-search-input" class="sr-only">{{ $t('搜索会话') }}</label>
                     <input
+                        id="global-session-search-input"
                         ref="input"
                         v-search="searchInfo"
                         class="ss-input"

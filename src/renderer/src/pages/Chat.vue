@@ -326,6 +326,7 @@
                         <font-awesome-icon :icon="['fas', 'image']" />
                         <input id="choice-pic" type="file" style="display: none"
                             @change="selectImg">
+                        <label for="choice-pic" class="sr-only">{{ $t('选择图片') }}</label>
                     </div>
                     <div
                         :title="$t('文件')"
@@ -333,6 +334,7 @@
                         <font-awesome-icon :icon="['fas', 'folder']" />
                         <input id="choice-file" type="file"
                             style="display: none" @change="selectFile">
+                        <label for="choice-file" class="sr-only">{{ $t('选择文件') }}</label>
                     </div>
                     <div
                         :title="$t('表情')"
@@ -367,37 +369,43 @@
                 </div>
                 <div>
                     <form @submit="mainSubmit">
-                        <input v-if="!Option.get('use_breakline')"
-                            id="main-input"
-                            v-model="msg"
-                            type="text"
-                            autocomplete="off"
-                            :disabled="uiStore.openSideBar || chat.info.me_info.shut_up_timestamp > 0"
-                            :placeholder="
-                                chat.info.me_info.shut_up_timestamp > 0
-                                    ? $t('已被禁言至：{time}', {
-                                        time: Intl.DateTimeFormat(
-                                            trueLang, getTimeConfig(
-                                                new Date(chat.info.me_info.shut_up_timestamp * 1000),
-                                            ),
-                                        ).format(new Date(chat.info.me_info.shut_up_timestamp * 1000)),
-                                    }) : ''"
-                            @paste="addImg"
-                            @keydown="mainAtKey"
-                            @keyup="mainKeyUp"
-                            @click="selectSQIn"
-                            @input="handleInput">
-                        <textarea v-else id="main-input-ex"
-                            v-model="msg"
-                            type="text"
-                            :disabled="uiStore.openSideBar"
-                            @paste="addImg"
-                            @keydown="mainKey"
-                            @keyup="mainKeyUp"
-                            @click="selectSQIn"
-                            @input="handleInput"
-                            @compositionstart="handleCompositionStart"
-                            @compositionend="handleCompositionEnd" />
+                        <template v-if="!Option.get('use_breakline')">
+                            <label for="main-input" class="sr-only">{{ $t('消息输入框') }}</label>
+                            <input
+                                id="main-input"
+                                v-model="msg"
+                                type="text"
+                                autocomplete="off"
+                                :disabled="uiStore.openSideBar || chat.info.me_info.shut_up_timestamp > 0"
+                                :placeholder="
+                                    chat.info.me_info.shut_up_timestamp > 0
+                                        ? $t('已被禁言至：{time}', {
+                                            time: Intl.DateTimeFormat(
+                                                trueLang, getTimeConfig(
+                                                    new Date(chat.info.me_info.shut_up_timestamp * 1000),
+                                                ),
+                                            ).format(new Date(chat.info.me_info.shut_up_timestamp * 1000)),
+                                        }) : ''"
+                                @paste="addImg"
+                                @keydown="mainAtKey"
+                                @keyup="mainKeyUp"
+                                @click="selectSQIn"
+                                @input="handleInput">
+                        </template>
+                        <template v-else>
+                            <label for="main-input-ex" class="sr-only">{{ $t('消息输入框') }}</label>
+                            <textarea id="main-input-ex"
+                                v-model="msg"
+                                type="text"
+                                :disabled="uiStore.openSideBar"
+                                @paste="addImg"
+                                @keydown="mainKey"
+                                @keyup="mainKeyUp"
+                                @click="selectSQIn"
+                                @input="handleInput"
+                                @compositionstart="handleCompositionStart"
+                                @compositionend="handleCompositionEnd" />
+                        </template>
                     </form>
                     <slot name="main-input-button" />
                     <div @click="sendMsg('sendMsgBack')">
@@ -512,7 +520,8 @@
                         <span>{{ $t('转发消息') }}</span>
                         <font-awesome-icon :icon="['fas', 'xmark']" @click="cancelForward" />
                     </header>
-                    <input :placeholder="$t('搜索 ……')" @input="searchForward">
+                    <label for="chat-forward-search" class="sr-only">{{ $t('搜索转发对象') }}</label>
+                    <input id="chat-forward-search" :placeholder="$t('搜索 ……')" @input="searchForward">
                     <div>
                         <div v-for="data in forwardList"
                             :key=" 'forwardList-' + data.user_id ? data.user_id : data.group_id"
